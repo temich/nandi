@@ -1,5 +1,7 @@
 # redin
 
+Distributed peer indexing with Redis.
+
 A TypeScript package for Node >= 24. `tsc` emits `dist/` (JS + `.d.ts` +
 sourcemaps); `src/` ships alongside it so the sourcemaps resolve.
 

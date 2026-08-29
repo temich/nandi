@@ -2,6 +2,7 @@
   "name": "redin",
   "version": "0.0.0",
   "private": true,
+  "description": "Distributed peer indexing with Redis",
   "bugs": {
     "url": "https://github.com/temich/dpi/issues"
   },
