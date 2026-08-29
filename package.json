@@ -1,10 +1,24 @@
 {
-  "name": "dpi",
-  "version": "0.0.0",
-  "private": true,
+  "name": "n-and-i",
+  "version": "0.1.0",
+  "description": "Distributed peer indexing with Redis",
+  "bugs": {
+    "url": "https://github.com/temich/nandi/issues"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Artem Gurtovoi",
+    "url": "https://github.com/temich"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/temich/nandi.git"
+  },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!src/**/*.test.ts",
+    "!src/harness.ts"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -15,6 +29,9 @@
       "default": "./dist/index.js"
     }
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
@@ -24,18 +41,26 @@
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "check": "npm run typecheck && npm run lint && npm run fmt:check && npm test",
-    "prepare": "husky || true"
+    "prepare": "npm run build && (husky || true)"
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.2.1",
-    "@commitlint/config-conventional": "^21.2.0",
-    "@types/node": "^26.1.1",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/github": "^12.0.9",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.1",
+    "@types/node": "^26.4.0",
+    "conventional-changelog-conventionalcommits": "^9.3.1",
     "husky": "^9.1.7",
-    "oxfmt": "^0.60.0",
-    "oxlint": "^1.74.0",
+    "ioredis": "^6.0.0",
+    "oxfmt": "^0.65.0",
+    "oxlint": "^1.80.0",
+    "redis": "^6.2.1",
+    "semantic-release": "^25.0.9",
     "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.0.0"
   }
 }
