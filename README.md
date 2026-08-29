@@ -169,11 +169,19 @@ cross-slot.
 
 ## Development
 
+The tests are integration tests: they need a Redis, and fail without one.
+
 ```sh
+docker run --rm -p 6379:6379 redis:8-alpine
+
 npm install
 npm run check   # typecheck + lint + format check + tests
 npm run build   # emits dist/
 ```
+
+`REDIS_URL` points them elsewhere (default `redis://localhost:6379`), and
+`TEST_INTERVAL` sets the interval they run at in milliseconds (default `300`).
+A slower machine wants a larger one — CI uses `600`.
 
 | script              | does                                   |
 | ------------------- | -------------------------------------- |

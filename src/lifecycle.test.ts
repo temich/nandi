@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict'
 import { after, describe, it } from 'node:test'
-import { connect, faulty, group, settle, sleep, start, type Worker } from './harness.ts'
+import { connect, faulty, INTERVAL, group, settle, sleep, start, type Worker } from './harness.ts'
 import { discover, type Peer } from './discover.ts'
 import { redisRegistry } from './registry.ts'
-
-const INTERVAL = 300
 
 const owns = (peer: Peer) => peer.i !== null
 

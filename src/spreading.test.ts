@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict'
 import { after, describe, it } from 'node:test'
-import { assertPartitions, connect, group, settle, sleep, start, type Worker } from './harness.ts'
+import {
+  assertPartitions,
+  connect,
+  INTERVAL,
+  group,
+  settle,
+  sleep,
+  start,
+  type Worker,
+} from './harness.ts'
 import type { Registry, Tick } from './registry.ts'
-
-const INTERVAL = 300
 
 interface Track {
   ticks: Tick[]

@@ -5,6 +5,9 @@ import { redisRegistry, type Registry } from './registry.ts'
 
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379'
 
+/** Interval the suites run at. Slower machines want more; the library has no floor. */
+export const INTERVAL = Number(process.env.TEST_INTERVAL ?? 300)
+
 export const connect = () => new Redis(REDIS_URL)
 
 let seq = 0

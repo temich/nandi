@@ -2,10 +2,17 @@
 
 ## Working on a change
 
+The tests run against a real Redis and fail without one:
+
 ```sh
+docker run --rm -p 6379:6379 redis:8-alpine
+
 npm install
 npm run check
 ```
+
+`REDIS_URL` points them at another server, and `TEST_INTERVAL` raises the
+interval they run at if the machine is slow.
 
 Branch off `dev`, and open a pull request back into it. A pull request needs a
 passing `ci` run, an approving review, and every review thread resolved.

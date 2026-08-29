@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict'
 import { after, describe, it } from 'node:test'
-import { assertPartitions, connect, group, settle, sleep, start, type Worker } from './harness.ts'
+import {
+  assertPartitions,
+  connect,
+  INTERVAL,
+  group,
+  settle,
+  sleep,
+  start,
+  type Worker,
+} from './harness.ts'
 import type { Peer } from './discover.ts'
-
-const INTERVAL = 300
 
 describe('discover', () => {
   const running: Worker[] = []

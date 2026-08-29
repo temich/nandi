@@ -1,11 +1,10 @@
 import { describe, it } from 'node:test'
 import { Redis } from 'ioredis'
 import { createClient } from 'redis'
-import { assertCovers, group, REDIS_URL, settle } from './harness.ts'
+import { assertCovers, INTERVAL, group, REDIS_URL, settle } from './harness.ts'
 import { discover, type Peer } from './discover.ts'
 import type { RedisLike } from './registry.ts'
 
-const INTERVAL = 300
 const IDLE: Peer = { i: null, n: null }
 
 interface Client {
