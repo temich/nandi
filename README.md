@@ -1,6 +1,4 @@
-# n-and-i
-
-Distributed peer indexing with Redis
+# Distributed peer indexing with Redis
 
 Workers that split a shared task source by `task.id % n === i` need two numbers.
 [Read more](https://temich.net/notes/peers/)
