@@ -1,14 +1,9 @@
 # n-and-i
 
-Distributed peer indexing with Redis.
+Distributed peer indexing with Redis
 
-Workers that split a shared task source by `task.id % n === i` need two numbers:
-`n`, how many of them are live, and `i`, which one this process is. This derives
-both from Redis, with no coordinator — workers register themselves in a counter
-keyed by the current time interval, and the count that interval closed on
-becomes the replica count.
-
-Based on [Distributed Peer Indexing](https://temich.net/notes/peers/).
+Workers that split a shared task source by `task.id % n === i` need two numbers.
+[Read more](https://temich.net/notes/peers/)
 
 ## Usage
 
@@ -75,17 +70,19 @@ had crashed.
 
 ### Options
 
-| Option     |                |                                                            |
-| ---------- | -------------- | ---------------------------------------------------------- |
-| `redis`    | required\*     | An ioredis or node-redis client.                           |
-| `name`     | required       | Worker group name, for example `mail-sender`.              |
-| `interval` | required       | Interval length in milliseconds.                           |
-| `ttl`      | `interval * 3` | How long interval keys live.                               |
-| `prefix`   | `''`           | Prepended to the key, for namespacing.                     |
-| `signal`   |                | An `AbortSignal`; aborting ends the loop, as `break` does. |
-| `registry` |                | A registry of your own, in place of `redis`.               |
+| Option     |              |                                                            |
+| ---------- | ------------ | ---------------------------------------------------------- |
+| `redis`    | required\*   | An ioredis or node-redis client.                           |
+| `name`     | required     | Worker group name, for example `mail-sender`.              |
+| `interval` | required\*\* | Interval length in milliseconds.                           |
+| `prefix`   | `''`         | Prepended to the key, for namespacing.                     |
+| `signal`   |              | An `AbortSignal`; aborting ends the loop, as `break` does. |
+| `registry` |              | A registry of your own, in place of `redis`.               |
 
 \* Either `redis` or `registry`.
+
+\*\* A worker owns nothing until the interval it registered in has closed, so it
+starts consuming **no earlier than** one interval after it comes up.
 
 ### Choosing an interval
 
@@ -197,7 +194,7 @@ A slower machine wants a larger one — CI uses `600`.
 ## Branches and releases
 
 - `dev` — the default branch. Changes land here through a pull request that
-  passes `ci` and carries an approving review.
+  passes `check` and carries an approving review.
 - `release` — merging `dev` into it runs `semantic-release`, which derives the
   version from the commit messages, tags it, publishes the package to npm, and
   cuts a GitHub Release with the generated notes.

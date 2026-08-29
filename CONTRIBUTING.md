@@ -15,7 +15,7 @@ npm run check
 interval they run at if the machine is slow.
 
 Branch off `dev`, and open a pull request back into it. A pull request needs a
-passing `ci` run, an approving review, and every review thread resolved.
+passing `check` run, an approving review, and every review thread resolved.
 
 Commit messages must follow [conventional commits](https://www.conventionalcommits.org)
 — `commit-msg` lints them locally, and they decide the next released version:
