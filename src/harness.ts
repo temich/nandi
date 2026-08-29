@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { Redis } from 'ioredis'
 import { discover, type DiscoverOptions, type Peer } from './discover.ts'
 import { redisRegistry, type Registry } from './registry.ts'
@@ -111,4 +112,26 @@ export const start = (
       return closing
     },
   }
+}
+
+/**
+ * The whole point of the scheme: the live workers must hold `0..n-1`, each
+ * exactly once. Anything else is a gap or a duplicate.
+ */
+export const assertPartitions = (workers: Worker[], n: number) => {
+  const peers = workers
+    .map(worker => worker.peer())
+    .filter((peer): peer is { i: number; n: number } => peer.i !== null)
+
+  assert.equal(peers.length, n, `expected ${n} workers to own a slot, got ${peers.length}`)
+  assert.deepEqual(
+    peers.map(peer => peer.n),
+    Array.from({ length: n }, () => n),
+    'every worker must agree on n'
+  )
+  assert.deepEqual(
+    peers.map(peer => peer.i).toSorted((a, b) => a - b),
+    Array.from({ length: n }, (_, index) => index),
+    'indices must cover 0..n-1 exactly once'
+  )
 }

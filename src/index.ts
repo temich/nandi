@@ -7,5 +7,6 @@ export {
   type RedisRegistryOptions,
   type Tick,
 } from './registry.ts'
+export { nextRegistration, phase } from './schedule.ts'
 export { REGISTER } from './lua.ts'
 export { VERSION } from './version.ts'

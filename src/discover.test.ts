@@ -1,35 +1,9 @@
 import assert from 'node:assert/strict'
 import { after, describe, it } from 'node:test'
-import { connect, group, settle, sleep, start, type Worker } from './harness.ts'
+import { assertPartitions, connect, group, settle, sleep, start, type Worker } from './harness.ts'
 import type { Peer } from './discover.ts'
 
 const INTERVAL = 300
-
-/** The pairs of every worker that currently owns one. */
-const owned = (workers: Worker[]) =>
-  workers
-    .map(worker => worker.peer())
-    .filter((peer): peer is { i: number; n: number } => peer.i !== null)
-
-/**
- * The whole point of the scheme: the live workers must hold `0..n-1`, each
- * exactly once. Anything else is a gap or a duplicate.
- */
-const assertPartitions = (workers: Worker[], n: number) => {
-  const peers = owned(workers)
-
-  assert.equal(peers.length, n, `expected ${n} workers to own a slot, got ${peers.length}`)
-  assert.deepEqual(
-    peers.map(peer => peer.n),
-    Array.from({ length: n }, () => n),
-    'every worker must agree on n'
-  )
-  assert.deepEqual(
-    peers.map(peer => peer.i).toSorted((a, b) => a - b),
-    Array.from({ length: n }, (_, index) => index),
-    'indices must cover 0..n-1 exactly once'
-  )
-}
 
 describe('discover', () => {
   const running: Worker[] = []

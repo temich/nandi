@@ -1,4 +1,5 @@
 import { redisRegistry, type RedisLike, type Registry, type Tick } from './registry.ts'
+import { nextRegistration } from './schedule.ts'
 
 /**
  * The pair a worker partitions by: `task.id % n === i`.
@@ -136,6 +137,7 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
         held = { interval: tick.interval, index: tick.index }
         attempt = 0
         registered = Date.now()
+        delay = Math.max(0, nextRegistration(tick, interval, registered) - registered)
       } catch {
         attempt += 1
         delay = backoff(interval, attempt)
