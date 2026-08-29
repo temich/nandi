@@ -33,7 +33,7 @@ describe('lifecycle', () => {
     const redis = connect()
     connections.push(redis)
 
-    const outage = faulty(redisRegistry(redis, { name, interval: INTERVAL, ttl: INTERVAL * 3 }))
+    const outage = faulty(redisRegistry(redis, { name, interval: INTERVAL }))
     const worker = start({ name, interval: INTERVAL }, { wrap: () => outage.registry })
     running.push(worker)
 

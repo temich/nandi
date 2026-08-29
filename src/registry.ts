@@ -42,8 +42,6 @@ export interface RedisRegistryOptions {
   name: string
   /** Interval length in milliseconds. */
   interval: number
-  /** How long interval keys live, in milliseconds. */
-  ttl: number
   /** Prepended to the key, for namespacing. */
   prefix?: string
 }
@@ -55,6 +53,12 @@ export interface RedisRegistryOptions {
  */
 export const base = ({ name, prefix = '' }: RedisRegistryOptions): string => `${prefix}{${name}}`
 
+/**
+ * Intervals an interval key is kept for. It only has to outlive the one
+ * interval that reads it; the rest is room for a worker that fell behind.
+ */
+const KEEP = 3
+
 const SHA = createHash('sha1').update(REGISTER).digest('hex')
 
 const isNodeRedis = (redis: RedisLike): redis is NodeRedis => 'evalSha' in redis
@@ -65,7 +69,7 @@ const isMissingScript = (error: unknown) =>
 
 export const redisRegistry = (redis: RedisLike, options: RedisRegistryOptions): Registry => {
   const key = base(options)
-  const argv = [String(options.interval), String(options.ttl)]
+  const argv = [String(options.interval), String(options.interval * KEEP)]
 
   const byHash = isNodeRedis(redis)
     ? () => redis.evalSha(SHA, { keys: [key], arguments: argv })

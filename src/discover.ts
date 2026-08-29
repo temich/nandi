@@ -18,8 +18,6 @@ export interface DiscoverOptions {
   name: string
   /** Interval length in milliseconds. See the README on choosing one. */
   interval: number
-  /** How long interval keys live. Defaults to three intervals. */
-  ttl?: number
   /** Prepended to the key, for namespacing. */
   prefix?: string
   /** Stops the loop, as `break` does. */
@@ -63,7 +61,6 @@ const registryFor = (options: DiscoverOptions): Registry => {
   return redisRegistry(options.redis, {
     name: options.name,
     interval: options.interval,
-    ttl: options.ttl ?? options.interval * 3,
     prefix: options.prefix,
   })
 }

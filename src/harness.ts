@@ -82,7 +82,6 @@ export const start = (
   const inner = redisRegistry(redis, {
     name: options.name,
     interval: options.interval,
-    ttl: options.ttl ?? options.interval * 3,
     prefix: options.prefix,
   })
 
