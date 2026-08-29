@@ -1,6 +1,6 @@
 {
   "name": "n-and-i",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Distributed peer indexing with Redis",
   "bugs": {
     "url": "https://github.com/temich/nandi/issues"
