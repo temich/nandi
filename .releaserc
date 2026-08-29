@@ -25,16 +25,6 @@
       "@semantic-release/npm"
     ],
     [
-      "@semantic-release/git",
-      {
-        "assets": [
-          "package.json",
-          "package-lock.json"
-        ],
-        "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
-      }
-    ],
-    [
       "@semantic-release/github",
       {
         "owner": "temich"

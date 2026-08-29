@@ -34,11 +34,16 @@ npm run build   # emits dist/
 
 ## Branches and releases
 
-- `dev` — the working branch.
-- `release` — every push runs the checks and then `semantic-release`, which
-  derives the version from the commit messages, publishes the package to npm,
-  cuts a GitHub Release with the generated notes, and commits the version bump
-  back.
+- `dev` — the default branch. Changes land here through a pull request that
+  passes `ci` and carries an approving review.
+- `release` — merging `dev` into it runs `semantic-release`, which derives the
+  version from the commit messages, tags it, publishes the package to npm, and
+  cuts a GitHub Release with the generated notes.
+
+Commit messages are the release input, so `commit-msg` lints them against
+[conventional commits](https://www.conventionalcommits.org). The version in this
+repository's `package.json` is not bumped by the release — the git tags are the
+record, and `semantic-release` sets the published version at publish time.
 
 Publishing to npm authenticates over OIDC — npm trusted publishing, configured
 against this repository and `release.yml`. No `NPM_TOKEN` secret is involved:
