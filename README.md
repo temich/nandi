@@ -57,6 +57,9 @@ The trust relationship itself is registry-side state, not repository state:
 npm trust list n-and-i
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch and release procedure,
+and [SECURITY.md](SECURITY.md) for reporting a vulnerability.
+
 ## License
 
 [MIT](LICENSE) © Artem Gurtovoi
