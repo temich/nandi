@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { REGISTER } from './lua.ts'
 
 /** One registration: what the group looked like, as of one call. */
@@ -21,10 +22,20 @@ export interface Registry {
   register(): Promise<Tick>
 }
 
-/** The subset of ioredis and node-redis that {@link redisRegistry} calls. */
-export interface RedisLike {
-  eval(script: string, numkeys: number, ...args: string[]): Promise<unknown>
+/** How ioredis takes a script: the key count, then keys, then arguments. */
+interface Ioredis {
+  eval(script: string, keys: number, ...args: string[]): Promise<unknown>
+  evalsha(sha: string, keys: number, ...args: string[]): Promise<unknown>
 }
+
+/** How node-redis takes a script: keys and arguments as named lists. */
+interface NodeRedis {
+  eval(script: string, options: { keys: string[]; arguments: string[] }): Promise<unknown>
+  evalSha(sha: string, options: { keys: string[]; arguments: string[] }): Promise<unknown>
+}
+
+/** Either client will do; the two call shapes are normalised below. */
+export type RedisLike = Ioredis | NodeRedis
 
 export interface RedisRegistryOptions {
   /** Worker group name, for example `mail-sender`. */
@@ -44,13 +55,40 @@ export interface RedisRegistryOptions {
  */
 export const base = ({ name, prefix = '' }: RedisRegistryOptions): string => `${prefix}{${name}}`
 
+const SHA = createHash('sha1').update(REGISTER).digest('hex')
+
+const isNodeRedis = (redis: RedisLike): redis is NodeRedis => 'evalSha' in redis
+
+/** Redis reports an unknown script by name; anything else is a real failure. */
+const isMissingScript = (error: unknown) =>
+  error instanceof Error && error.message.includes('NOSCRIPT')
+
 export const redisRegistry = (redis: RedisLike, options: RedisRegistryOptions): Registry => {
   const key = base(options)
   const argv = [String(options.interval), String(options.ttl)]
 
+  const byHash = isNodeRedis(redis)
+    ? () => redis.evalSha(SHA, { keys: [key], arguments: argv })
+    : () => redis.evalsha(SHA, 1, key, ...argv)
+
+  const bySource = isNodeRedis(redis)
+    ? () => redis.eval(REGISTER, { keys: [key], arguments: argv })
+    : () => redis.eval(REGISTER, 1, key, ...argv)
+
+  /** Send the hash, and only ship the source when the server has not seen it. */
+  const call = async () => {
+    try {
+      return await byHash()
+    } catch (error) {
+      if (!isMissingScript(error)) throw error
+
+      return await bySource()
+    }
+  }
+
   return {
     async register() {
-      const reply = await redis.eval(REGISTER, 1, key, ...argv)
+      const reply = await call()
 
       if (!Array.isArray(reply) || reply.length !== 4)
         throw new TypeError(`n-and-i: unexpected registration reply ${JSON.stringify(reply)}`)

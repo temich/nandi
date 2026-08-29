@@ -2,16 +2,134 @@
 
 Distributed peer indexing with Redis.
 
-A TypeScript package for Node >= 24. `tsc` emits `dist/` (JS + `.d.ts` +
-sourcemaps); `src/` ships alongside it so the sourcemaps resolve.
+Workers that split a shared task source by `task.id % n === i` need two numbers:
+`n`, how many of them are live, and `i`, which one this process is. This derives
+both from Redis, with no coordinator — workers register themselves in a counter
+keyed by the current time interval, and the count that interval closed on
+becomes the replica count.
 
-> The sources are `.ts`, but they cannot be the published artifact: Node refuses
-> to strip types for files under `node_modules`
-> (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`). Hence the emit step.
->
-> `erasableSyntaxOnly` is on regardless, so `enum`, `namespace` and parameter
-> properties stay out — tests run straight off `src/` under Node's type
-> stripping, with no build in the loop.
+Based on [Distributed Peer Indexing](https://temich.net/notes/peers/).
+
+## Usage
+
+```sh
+npm install n-and-i
+```
+
+```ts
+import { discover } from 'n-and-i'
+
+for await (const { i, n } of discover({ redis, name: 'mail-sender', interval: 30_000 })) {
+  await drain() // stop taking new work, finish or release what is in flight
+
+  if (i === null) continue // not registered — stay stopped
+
+  run(task => task.id % n === i)
+}
+```
+
+The loop yields only when ownership changes, so its body is exactly the point at
+which to hand work over: stop consuming, drain, adopt the new pair, resume. A
+settled group yields once and then stays quiet for as long as its membership
+holds.
+
+`redis` is an [ioredis](https://github.com/redis/ioredis) or
+[node-redis](https://github.com/redis/node-redis) client — whichever you already
+have. Nothing else is a dependency.
+
+### Options
+
+| Option     |                |                                                            |
+| ---------- | -------------- | ---------------------------------------------------------- |
+| `redis`    | required\*     | An ioredis or node-redis client.                           |
+| `name`     | required       | Worker group name, for example `mail-sender`.              |
+| `interval` | required       | Interval length in milliseconds.                           |
+| `ttl`      | `interval * 3` | How long interval keys live.                               |
+| `prefix`   | `''`           | Prepended to the key, for namespacing.                     |
+| `signal`   |                | An `AbortSignal`; aborting ends the loop, as `break` does. |
+| `registry` |                | A registry of your own, in place of `redis`.               |
+
+\* Either `redis` or `registry`.
+
+### Choosing an interval
+
+Ten to thirty seconds suits most groups. The interval has to comfortably exceed
+a registration round trip and the jitter around it, and it also sets the pace of
+everything else: a new worker waits one interval before it owns anything, and a
+departure is noticed one interval after it happens.
+
+Short intervals react faster but spend a larger share of themselves in transit,
+and leave less room between workers. Long intervals are calmer but slower to
+reflect reality. Nothing below a second is sensible in production, though the
+library enforces no floor — its own tests run at 300ms.
+
+## How it works
+
+Each worker `INCR`s a key naming the current interval. The reply is its index
+for that interval; the value the previous key closed on is the replica count.
+Redis holds nothing but counters — no membership list, no identities:
+
+```
+{mail-sender}:58391 = 3      <- closed, so its count is final
+{mail-sender}:58392 = 3      <- open, still accepting registrations
+```
+
+The interval number comes from `TIME` inside the script, so every worker agrees
+on it by construction and clock differences between workers do not come into it.
+
+**Both numbers come from the same closed interval.** A worker keeps the index it
+received last time in memory and pairs it with that interval's final count. The
+registrants of `N-1` therefore hold exactly `0..n-1`, each once — a complete
+partition with no overlap. Pairing an index from the open interval with a count
+from the closed one is what would let a worker claim a slot in a group it was
+not part of.
+
+That also settles what happens to a worker that has just started: it has no
+index from a closed interval, so it has nothing to pair, and it owns nothing
+until the interval it registered in has closed. The same check covers a worker
+that stalled past an interval or restarted — the absence of a usable index is
+what makes it wait, and no identity or registry of members is needed to detect
+it.
+
+### Registration timing
+
+Workers do not all register at the same moment. Each fires at `(i + 0.5) / n` of
+the interval, worked out from the values its previous call returned and kept
+clear of the boundaries. Ordering then stops depending on network jitter, and
+the arrangement is self-reinforcing: a worker holding index 2 of 5 fires third
+and is handed index 2 again.
+
+A settled group keeps its assignment indefinitely. A join shifts only the
+workers after the insertion point; a departure shifts only those after the gap.
+Two workers that do collide are handed different indices and separate on the
+next interval.
+
+## What this does not give you
+
+**Ownership is eventual.** The pair in force describes the previous interval, so
+membership changes take one to two intervals to show up. This suits groups that
+tolerate controlled rebalancing; it is not a substitute for a real coordination
+protocol when ownership must change immediately and consistently.
+
+**Rebalances have a window.** Each worker adopts a new pair when its own
+registration returns, not at a shared instant, so for a fraction of an interval
+during a rebalance two mappings are live across the group and a task that
+changed hands can be picked up twice. Consumers that need at-most-once have to
+fence the work itself.
+
+**A worker that registers and then dies leaves its slot unowned** until the next
+interval, because the count is a snapshot of who _was_ present. No membership
+scheme avoids this; only a shorter interval narrows it.
+
+**Registration failures are silent.** A blip is retried within the interval, and
+a full interval with no successful registration hands the loop the idle pair
+rather than raising. A worker Redis has stopped counting stops consuming.
+
+## Redis Cluster
+
+Keys are written as `{name}:N`. The braces are a hash tag, so every interval key
+of a group lands in one slot and the two keys the script touches are never
+cross-slot.
 
 ## Development
 

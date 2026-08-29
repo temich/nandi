@@ -118,10 +118,8 @@ export const start = (
  * The whole point of the scheme: the live workers must hold `0..n-1`, each
  * exactly once. Anything else is a gap or a duplicate.
  */
-export const assertPartitions = (workers: Worker[], n: number) => {
-  const peers = workers
-    .map(worker => worker.peer())
-    .filter((peer): peer is { i: number; n: number } => peer.i !== null)
+export const assertCovers = (held: Peer[], n: number) => {
+  const peers = held.filter((peer): peer is { i: number; n: number } => peer.i !== null)
 
   assert.equal(peers.length, n, `expected ${n} workers to own a slot, got ${peers.length}`)
   assert.deepEqual(
@@ -135,3 +133,9 @@ export const assertPartitions = (workers: Worker[], n: number) => {
     'indices must cover 0..n-1 exactly once'
   )
 }
+
+export const assertPartitions = (workers: Worker[], n: number) =>
+  assertCovers(
+    workers.map(worker => worker.peer()),
+    n
+  )
