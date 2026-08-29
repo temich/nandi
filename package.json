@@ -1,17 +1,33 @@
 {
-  "name": "dpi",
+  "name": "redin",
   "version": "0.0.0",
   "private": true,
+  "bugs": {
+    "url": "https://github.com/temich/dpi/issues"
+  },
+  "author": {
+    "name": "Artem Gurtovoi",
+    "url": "https://github.com/temich"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/temich/dpi.git"
+  },
   "files": [
+    "dist",
     "src"
   ],
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "lint": "oxlint .",
@@ -19,15 +35,22 @@
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "check": "npm run typecheck && npm run lint && npm run fmt:check && npm test",
-    "prepare": "husky || true"
+    "prepare": "npm run build && (husky || true)"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.1",
     "@commitlint/config-conventional": "^21.2.0",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/git": "^11.0.1",
+    "@semantic-release/github": "^12.0.2",
+    "@semantic-release/npm": "^13.1.2",
+    "@semantic-release/release-notes-generator": "^14.1.0",
     "@types/node": "^26.1.1",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
     "husky": "^9.1.7",
     "oxfmt": "^0.65.0",
     "oxlint": "^1.74.0",
+    "semantic-release": "^25.0.9",
     "typescript": "^7.0.2"
   },
   "engines": {

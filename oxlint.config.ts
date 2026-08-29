@@ -11,7 +11,7 @@ export default defineConfig({
     es2024: true,
     node: true,
   },
-  ignorePatterns: ['node_modules/**', 'coverage/**'],
+  ignorePatterns: ['node_modules/**', 'coverage/**', 'dist/**'],
   rules: {
     eqeqeq: 'error',
     curly: ['error', 'multi'],
