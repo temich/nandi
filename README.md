@@ -68,18 +68,15 @@ had crashed.
 
 ### Options
 
-| Option     |              |                                                            |
-| ---------- | ------------ | ---------------------------------------------------------- |
-| `redis`    | required\*   | An ioredis or node-redis client.                           |
-| `name`     | required     | Worker group name, for example `mail-sender`.              |
-| `interval` | required\*\* | Interval length in milliseconds.                           |
-| `prefix`   | `''`         | Prepended to the key, for namespacing.                     |
-| `signal`   |              | An `AbortSignal`; aborting ends the loop, as `break` does. |
-| `registry` |              | A registry of your own, in place of `redis`.               |
+| Option     |            |                                                            |
+| ---------- | ---------- | ---------------------------------------------------------- |
+| `redis`    | required   | An ioredis or node-redis client.                           |
+| `name`     | required   | Worker group name, for example `mail-sender`.              |
+| `interval` | required\* | Interval length in milliseconds.                           |
+| `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
+| `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
 
-\* Either `redis` or `registry`.
-
-\*\* A worker owns nothing until the interval it registered in has closed, so it
+\* A worker owns nothing until the interval it registered in has closed, so it
 starts consuming **no earlier than** one interval after it comes up.
 
 ### Choosing an interval
