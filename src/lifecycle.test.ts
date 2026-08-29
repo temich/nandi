@@ -96,6 +96,54 @@ describe('lifecycle', () => {
     await redis.quit()
   })
 
+  it('hands the body a final idle pass when the signal aborts', async () => {
+    const name = group()
+    const redis = connect()
+    const control = new AbortController()
+    const seen: Peer[] = []
+
+    for await (const peer of discover({
+      redis,
+      name,
+      interval: INTERVAL,
+      signal: control.signal,
+    })) {
+      seen.push(peer)
+
+      if (owns(peer)) control.abort()
+    }
+
+    assert.ok(
+      seen.some(peer => owns(peer)),
+      'never owned a slot to stand down from'
+    )
+    assert.deepEqual(seen.at(-1), { i: null, n: null }, 'must end the loop owning nothing')
+
+    await redis.quit()
+  })
+
+  it('does not repeat the idle pair when it owned nothing', async () => {
+    const name = group()
+    const redis = connect()
+    const control = new AbortController()
+    const seen: Peer[] = []
+
+    const loop = (async () => {
+      const found = discover({ redis, name, interval: INTERVAL, signal: control.signal })
+
+      for await (const peer of found) seen.push(peer)
+    })()
+
+    // Long enough for the opening idle, far short of owning anything.
+    await sleep(INTERVAL / 4)
+    control.abort()
+    await loop
+
+    assert.deepEqual(seen, [{ i: null, n: null }])
+
+    await redis.quit()
+  })
+
   it('stops registering once the signal aborts', async () => {
     const name = group()
     const redis = connect()

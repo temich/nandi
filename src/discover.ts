@@ -173,6 +173,17 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
         deliver = resolve
       })
     }
+
+    // Standing down is the last ownership change. Handing the body one final
+    // idle pass runs whatever it already does on losing registration, so the
+    // loop cannot end while the worker still owns a slot. Only an aborted
+    // signal reaches this: `break` leaves through the consumer, and a generator
+    // cannot yield once that has happened.
+    if (applied.i !== null) {
+      applied = IDLE
+
+      yield IDLE
+    }
   } finally {
     stop()
     signal?.removeEventListener('abort', stop)

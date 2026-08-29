@@ -37,6 +37,42 @@ holds.
 [node-redis](https://github.com/redis/node-redis) client — whichever you already
 have. Nothing else is a dependency.
 
+### Shutting down
+
+Aborting the signal yields the idle pair one last time before the loop finishes,
+so a worker stands down inside the loop body — the same place it already handles
+losing its registration:
+
+```ts
+const control = new AbortController()
+process.on('SIGTERM', () => control.abort())
+
+const peers = discover({
+  redis,
+  name: 'mail-sender',
+  interval: 30_000,
+  signal: control.signal,
+})
+
+for await (const { i, n } of peers) {
+  await drain()
+
+  if (i === null) continue
+
+  consume(task => task.id % n === i)
+}
+
+// the loop never ends while the worker still owns a slot
+await redis.quit()
+```
+
+Leaving with `break` is immediate instead — a generator cannot yield once the
+consumer has left — so draining from there is your own.
+
+Either way the worker stays counted in the interval it last registered in, so
+its slot goes unowned for up to one interval after it leaves, exactly as if it
+had crashed.
+
 ### Options
 
 | Option     |                |                                                            |
