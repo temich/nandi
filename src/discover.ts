@@ -1,5 +1,5 @@
 import { redisRegistry, type RedisLike, type Registry, type Tick } from './registry.ts'
-import { nextRegistration } from './schedule.ts'
+import { GAP, nextRegistration } from './schedule.ts'
 
 /**
  * The pair a worker partitions by: `task.id % n === i`.
@@ -18,6 +18,12 @@ export interface DiscoverOptions {
   name: string
   /** Interval length in milliseconds. See the README on choosing one. */
   interval: number
+  /**
+   * The slack the scheme runs on, as a fraction of the interval, between 0 and
+   * 0.5. Registrations stay this far from the interval edges, and a worker
+   * stands down this far past the slot it was due in. Defaults to `0.15`.
+   */
+  gap?: number
   /** Prepended to the key, for namespacing. */
   prefix?: string
   /** Stops the loop, as `break` does. */
@@ -33,6 +39,10 @@ interface Held {
 }
 
 /**
+ * The pair a completed interval implies — the first of the two conditions on
+ * owning a slot, the second being that the interval before it implied the same
+ * pair.
+ *
  * Both values must come from the same completed interval. The held index is
  * usable only when it belongs to `N-1`, which is also what keeps a worker that
  * has just joined, stalled or restarted from claiming a slot it never had.
@@ -73,21 +83,27 @@ const registryFor = (options: DiscoverOptions): Registry => {
  * Registration runs on its own schedule, independently of how fast the body of
  * the loop is: a slow consumer never delays it, and simply sees the latest pair
  * rather than a queue of stale ones. Registration failures are transient by
- * nature and never surface as exceptions; losing the registration for a whole
- * interval yields the idle pair instead, so a worker that Redis has stopped
- * counting stops consuming.
+ * nature and never surface as exceptions; a registration that fails or hangs
+ * past the slot it was due in yields the idle pair instead, so a worker that
+ * Redis has stopped counting stops consuming.
  */
 export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> {
   const registry = registryFor(options)
   const { interval, signal } = options
+  const gap = options.gap ?? GAP
+
+  if (!(gap > 0 && gap < 0.5))
+    throw new RangeError(`n-and-i: \`gap\` must be between 0 and 0.5, got ${gap}`)
 
   if (signal?.aborted) return
 
   let held: Held | null = null
+  let previous: Peer = IDLE
   let applied: Peer = IDLE
   let mailbox: Peer | null = null
   let deliver: (() => void) | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
+  let stale: ReturnType<typeof setTimeout> | undefined
   let interrupt: (() => void) | null = null
   let done = false
 
@@ -104,6 +120,7 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
   const stop = () => {
     done = true
     clearTimeout(timer)
+    clearTimeout(stale)
     interrupt?.()
     interrupt = null
     deliver?.()
@@ -116,11 +133,37 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
       timer = setTimeout(resolve, ms)
     })
 
+  /**
+   * Standing down runs on its own timer rather than off the back of a failed
+   * attempt, because a registration that never returns is as much a loss of the
+   * registration as one that throws, and nothing on the error path would see
+   * it. Missing the slot it planned for leaves the worker where a restart would:
+   * no index from a closed interval, and nothing agreed to pair it with.
+   *
+   * Reusing the gap for this rather than a second number is what keeps the
+   * scheme sound. Owning a slot rests on the group spanning no more than two
+   * consecutive intervals, and a worker that missed a registration outright is
+   * a third: due at `1 - gap` at the latest, it has to be gone before the
+   * earliest worker takes up the newer mapping at `gap` of the interval after.
+   * That holds for any gap, because standing down `gap` late always beats the
+   * `2 * gap` the band leaves for it.
+   */
+  const arm = (ms: number) => {
+    clearTimeout(stale)
+
+    stale = setTimeout(() => {
+      held = null
+      previous = IDLE
+      publish(IDLE)
+    }, ms)
+  }
+
   signal?.addEventListener('abort', stop, { once: true })
 
   const driver = (async () => {
     let attempt = 0
-    let registered = Date.now()
+
+    arm(interval * (1 + gap))
 
     for (;;) {
       if (done) break
@@ -129,19 +172,23 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
 
       try {
         const tick = await registry.register()
+        const now = Date.now()
+        const next = pair(held, tick)
 
-        publish(pair(held, tick))
+        // Two agreeing intervals before owning anything. A pair that has just
+        // changed is not yet held by the whole group, and taking it up while a
+        // worker that has not registered this interval is still on the old one
+        // is what would put two mappings live at once.
+        publish(same(next, previous) ? next : IDLE)
+
+        previous = next
         held = { interval: tick.interval, index: tick.index }
         attempt = 0
-        registered = Date.now()
-        delay = Math.max(0, nextRegistration(tick, interval, registered) - registered)
+        delay = Math.max(0, nextRegistration(tick, interval, gap, now) - now)
+        arm(delay + interval * gap)
       } catch {
         attempt += 1
         delay = backoff(interval, attempt)
-
-        // A whole interval with no successful registration means the group has
-        // stopped counting this worker; it must not keep consuming.
-        if (Date.now() - registered >= interval) publish(IDLE)
       }
 
       if (done) break

@@ -7,5 +7,5 @@ export {
   type RedisRegistryOptions,
   type Tick,
 } from './registry.ts'
-export { nextRegistration, phase } from './schedule.ts'
+export { GAP, nextRegistration, phase } from './schedule.ts'
 export { REGISTER } from './lua.ts'
