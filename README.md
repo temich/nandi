@@ -40,10 +40,17 @@ npm run build   # emits dist/
   cuts a GitHub Release with the generated notes, and commits the version bump
   back.
 
-Publishing needs an `NPM_TOKEN` secret on the repository (an npm automation
-token with publish rights). Once the package exists on npm, npm trusted
-publishing can be configured on it instead and the secret dropped — the
-workflow already requests `id-token: write`.
+Publishing to npm authenticates over OIDC — npm trusted publishing, configured
+against this repository and `release.yml`. No `NPM_TOKEN` secret is involved:
+the workflow requests `id-token: write` and npm (>= 11.5.1, which Node 24
+bundles) exchanges that for a short-lived credential, and stamps the release
+with a provenance attestation.
+
+The trust relationship itself is registry-side state, not repository state:
+
+```sh
+npm trust list n-and-i
+```
 
 ## License
 
