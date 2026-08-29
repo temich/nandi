@@ -1,7 +1,6 @@
 {
   "name": "redin",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.0.1",
   "description": "Distributed peer indexing with Redis",
   "bugs": {
     "url": "https://github.com/temich/dpi/issues"
@@ -16,7 +15,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!src/**/*.test.ts"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -26,6 +26,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

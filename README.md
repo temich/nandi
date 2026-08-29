@@ -36,10 +36,11 @@ npm run build   # emits dist/
 
 - `dev` — the working branch.
 - `release` — every push runs the checks and then `semantic-release`, which
-  derives the version from the commit messages, publishes a GitHub Release with
-  the generated notes, and commits the version bump back.
+  derives the version from the commit messages, publishes the package to npm,
+  cuts a GitHub Release with the generated notes, and commits the version bump
+  back.
 
-The package is `private`, so `@semantic-release/npm` only bumps the version and
-does not publish to the registry. To publish, drop `"private": true`, add
-`"publishConfig": { "access": "public" }`, and give the release workflow an
-`NPM_TOKEN`.
+Publishing needs an `NPM_TOKEN` secret on the repository (an npm automation
+token with publish rights). Once the package exists on npm, npm trusted
+publishing can be configured on it instead and the secret dropped — the
+workflow already requests `id-token: write`.
