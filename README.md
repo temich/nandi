@@ -1,4 +1,4 @@
-# redin
+# n-and-i
 
 Distributed peer indexing with Redis.
 
