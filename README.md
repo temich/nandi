@@ -44,3 +44,7 @@ Publishing needs an `NPM_TOKEN` secret on the repository (an npm automation
 token with publish rights). Once the package exists on npm, npm trusted
 publishing can be configured on it instead and the secret dropped — the
 workflow already requests `id-token: write`.
+
+## License
+
+[MIT](LICENSE) © Artem Gurtovoi

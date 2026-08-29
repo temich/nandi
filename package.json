@@ -5,6 +5,7 @@
   "bugs": {
     "url": "https://github.com/temich/dpi/issues"
   },
+  "license": "MIT",
   "author": {
     "name": "Artem Gurtovoi",
     "url": "https://github.com/temich"
