@@ -1,0 +1,123 @@
+import assert from 'node:assert/strict'
+import { after, describe, it } from 'node:test'
+import { connect, faulty, group, settle, sleep, start, type Worker } from './harness.ts'
+import { discover, type Peer } from './discover.ts'
+import { redisRegistry } from './registry.ts'
+
+const INTERVAL = 300
+
+const owns = (peer: Peer) => peer.i !== null
+
+/** The highest interval a group has registered in — monotonic while it runs. */
+const reached = async (name: string) => {
+  const redis = connect()
+
+  try {
+    const keys = await redis.keys(`{${name}}:*`)
+
+    return keys.length === 0 ? 0 : Math.max(...keys.map(key => Number(key.split(':').pop())))
+  } finally {
+    await redis.quit()
+  }
+}
+
+describe('lifecycle', () => {
+  const running: Worker[] = []
+  const connections: ReturnType<typeof connect>[] = []
+
+  after(async () => {
+    await Promise.all(running.map(worker => worker.stop()))
+    await Promise.all(connections.map(redis => redis.quit()))
+  })
+
+  it('goes idle when registration is lost, and rejoins when it returns', async () => {
+    const name = group()
+    const redis = connect()
+    connections.push(redis)
+
+    const outage = faulty(redisRegistry(redis, { name, interval: INTERVAL, ttl: INTERVAL * 3 }))
+    const worker = start({ name, interval: INTERVAL }, { wrap: () => outage.registry })
+    running.push(worker)
+
+    await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 6)
+
+    outage.fail()
+    await settle(() => assert.ok(!owns(worker.peer()), 'must stop consuming'), INTERVAL * 6)
+
+    outage.heal()
+    await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 8)
+  })
+
+  it('never hands out the same pair twice in a row', async () => {
+    const name = group()
+    const workers = [start({ name, interval: INTERVAL }), start({ name, interval: INTERVAL })]
+    running.push(...workers)
+
+    await settle(() => assert.ok(workers.every(worker => owns(worker.peer()))), INTERVAL * 8)
+    await sleep(INTERVAL * 3)
+
+    for (const worker of workers) {
+      const pairs = worker.seen.map(peer => `${peer.i}/${peer.n}`)
+
+      for (let index = 1; index < pairs.length; index++)
+        assert.notEqual(pairs[index], pairs[index - 1], `repeated ${pairs[index]}`)
+    }
+  })
+
+  it('keeps registering while the consumer is busy', async () => {
+    const name = group()
+    const worker = start(
+      { name, interval: INTERVAL },
+      { onPeer: peer => (owns(peer) ? sleep(INTERVAL * 4) : undefined) }
+    )
+    running.push(worker)
+
+    await settle(() => assert.ok(owns(worker.peer())), INTERVAL * 6)
+
+    // The consumer is now blocked for four intervals; registration must not be.
+    const before = await reached(name)
+    await sleep(INTERVAL * 3)
+    const later = await reached(name)
+
+    assert.ok(later >= before + 2, `registration stalled: ${before} → ${later}`)
+  })
+
+  it('stops registering once the loop is broken out of', async () => {
+    const name = group()
+    const redis = connect()
+
+    for await (const peer of discover({ redis, name, interval: INTERVAL })) if (owns(peer)) break
+
+    const stopped = await reached(name)
+    await sleep(INTERVAL * 3)
+
+    assert.ok((await reached(name)) <= stopped, 'registration continued after break')
+
+    await redis.quit()
+  })
+
+  it('stops registering once the signal aborts', async () => {
+    const name = group()
+    const redis = connect()
+    const control = new AbortController()
+
+    const loop = (async () => {
+      for await (const peer of discover({
+        redis,
+        name,
+        interval: INTERVAL,
+        signal: control.signal,
+      }))
+        if (owns(peer)) control.abort()
+    })()
+
+    await loop
+
+    const stopped = await reached(name)
+    await sleep(INTERVAL * 3)
+
+    assert.ok((await reached(name)) <= stopped, 'registration continued after abort')
+
+    await redis.quit()
+  })
+})

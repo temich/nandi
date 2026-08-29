@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis'
 import { discover, type DiscoverOptions, type Peer } from './discover.ts'
+import { redisRegistry, type Registry } from './registry.ts'
 
 export const REDIS_URL = process.env.REDIS_URL ?? 'redis://localhost:6379'
 
@@ -10,7 +11,7 @@ let seq = 0
 /** A group name no other test shares, so suites can run against one Redis. */
 export const group = () => `nandi-test-${process.pid}-${++seq}`
 
-export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+export const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
 /** Polls `check` until it stops throwing, or gives up and rethrows. */
 export const settle = async (check: () => unknown, timeout = 5000, step = 25) => {
@@ -22,8 +23,33 @@ export const settle = async (check: () => unknown, timeout = 5000, step = 25) =>
       return
     } catch (error) {
       if (Date.now() >= deadline) throw error
+
       await sleep(step)
     }
+}
+
+export interface Fault {
+  registry: Registry
+  /** Every subsequent registration fails until {@link Fault.heal}. */
+  fail: () => void
+  heal: () => void
+}
+
+/** Wraps a real registry so a test can cut it off and restore it. */
+export const faulty = (inner: Registry): Fault => {
+  let broken = false
+
+  return {
+    registry: {
+      register: () => (broken ? Promise.reject(new Error('injected outage')) : inner.register()),
+    },
+    fail: () => {
+      broken = true
+    },
+    heal: () => {
+      broken = false
+    },
+  }
 }
 
 export interface Worker {
@@ -33,25 +59,56 @@ export interface Worker {
   stop: () => Promise<void>
 }
 
+export interface StartOptions {
+  /** Wraps the Redis-backed registry, for fault injection. */
+  wrap?: (registry: Registry) => Registry
+  /** Runs inside the loop body, to model a consumer that takes its time. */
+  onPeer?: (peer: Peer) => Promise<void> | void
+}
+
 /** Runs `discover` in the background on its own connection, recording what it yields. */
-export const start = (options: Omit<DiscoverOptions, 'redis' | 'registry'>): Worker => {
+export const start = (
+  options: Omit<DiscoverOptions, 'redis' | 'registry'>,
+  { wrap, onPeer }: StartOptions = {}
+): Worker => {
   const redis = connect()
   const seen: Peer[] = []
+  const control = new AbortController()
+
+  const inner = redisRegistry(redis, {
+    name: options.name,
+    interval: options.interval,
+    ttl: options.ttl ?? options.interval * 3,
+    prefix: options.prefix,
+  })
+
+  let closing: Promise<void> | null = null
 
   const loop = (async () => {
-    try {
-      for await (const peer of discover({ redis, ...options })) seen.push(peer)
-    } catch {
-      // Stopping a worker severs its connection; the loop ending is the point.
+    const peers = discover({
+      ...options,
+      registry: wrap ? wrap(inner) : inner,
+      signal: options.signal ?? control.signal,
+    })
+
+    for await (const peer of peers) {
+      seen.push(peer)
+      await onPeer?.(peer)
     }
   })()
 
   return {
     seen,
     peer: () => seen[seen.length - 1] ?? { i: null, n: null },
-    async stop() {
-      redis.disconnect()
-      await loop
+    stop() {
+      // Tests stop a worker to model it leaving, and again on teardown.
+      closing ??= (async () => {
+        control.abort()
+        await loop
+        await redis.quit()
+      })()
+
+      return closing
     },
   }
 }
