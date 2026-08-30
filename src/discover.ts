@@ -1,3 +1,4 @@
+import { sink, type Console } from './console.ts'
 import { redisRegistry, type RedisLike, type Registry, type Tick } from './registry.ts'
 import { GAP, nextRegistration } from './schedule.ts'
 
@@ -28,6 +29,13 @@ export interface DiscoverOptions {
   prefix?: string
   /** Stops the loop, as `break` does. */
   signal?: AbortSignal
+  /**
+   * Where to report what the loop is doing — anything with `trace`, `debug`,
+   * `info`, `warn` and `error`, the global `console` included. A healthy group
+   * never rises above `info`. See the README on what is reported at which
+   * level.
+   */
+  console?: Console
 }
 
 const IDLE: Peer = { i: null, n: null }
@@ -72,6 +80,7 @@ const registryFor = (options: DiscoverOptions): Registry => {
     name: options.name,
     interval: options.interval,
     prefix: options.prefix,
+    console: options.console,
   })
 }
 
@@ -91,11 +100,19 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
   const registry = registryFor(options)
   const { interval, signal } = options
   const gap = options.gap ?? GAP
+  const log = sink(options.console, { name: options.name })
 
   if (!(gap > 0 && gap < 0.5))
     throw new RangeError(`n-and-i: \`gap\` must be between 0 and 0.5, got ${gap}`)
 
   if (signal?.aborted) return
+
+  log.info('discover started', {
+    interval,
+    gap,
+    prefix: options.prefix ?? '',
+    registry: options.registry ? 'custom' : 'redis',
+  })
 
   let held: Held | null = null
   let previous: Peer = IDLE
@@ -106,10 +123,17 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
   let stale: ReturnType<typeof setTimeout> | undefined
   let interrupt: (() => void) | null = null
   let done = false
+  let reason: 'abort' | 'closed' = 'closed'
 
   /** A single slot, not a queue: an unread pair is replaced, never stacked. */
   const publish = (peer: Peer) => {
     if (same(applied, peer)) return
+
+    // Owning nothing is not a failure in itself — a rebalance and an orderly
+    // shutdown both pass through it — so losing a lease is reported at the
+    // level the granting of one was, and whatever cost it says so above.
+    if (peer.i === null) log.info('lease released', { i: applied.i, n: applied.n })
+    else log.info('lease granted', { i: peer.i, n: peer.n })
 
     applied = peer
     mailbox = peer
@@ -117,7 +141,19 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
     deliver = null
   }
 
-  const stop = () => {
+  /** Empties the mailbox, or says it was empty. */
+  const take = (): Peer | null => {
+    const peer = mailbox
+    mailbox = null
+
+    return peer
+  }
+
+  /** The first caller settles why the loop ended; the rest are idempotent. */
+  const stop = (why: 'abort' | 'closed') => {
+    if (done) return
+
+    reason = why
     done = true
     clearTimeout(timer)
     clearTimeout(stale)
@@ -126,6 +162,8 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
     deliver?.()
     deliver = null
   }
+
+  const abort = () => stop('abort')
 
   const wait = (ms: number) =>
     new Promise<void>(resolve => {
@@ -152,13 +190,15 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
     clearTimeout(stale)
 
     stale = setTimeout(() => {
+      log.warn('lease expired', { interval: held?.interval ?? null, after: ms })
+
       held = null
       previous = IDLE
       publish(IDLE)
     }, ms)
   }
 
-  signal?.addEventListener('abort', stop, { once: true })
+  signal?.addEventListener('abort', abort, { once: true })
 
   const driver = (async () => {
     let attempt = 0
@@ -175,20 +215,39 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
         const now = Date.now()
         const next = pair(held, tick)
 
+        log.debug('registration completed', {
+          interval: tick.interval,
+          index: tick.index,
+          replicas: tick.replicas,
+          skew: tick.at - now,
+        })
+
         // Two agreeing intervals before owning anything. A pair that has just
         // changed is not yet held by the whole group, and taking it up while a
         // worker that has not registered this interval is still on the old one
         // is what would put two mappings live at once.
-        publish(same(next, previous) ? next : IDLE)
+        if (same(next, previous)) {
+          log.trace('pair agreed', { i: next.i, n: next.n })
+          publish(next)
+        } else {
+          log.debug('pair disagreed', { i: next.i, n: next.n, pi: previous.i, pn: previous.n })
+          publish(IDLE)
+        }
 
         previous = next
         held = { interval: tick.interval, index: tick.index }
         attempt = 0
         delay = Math.max(0, nextRegistration(tick, interval, gap, now) - now)
-        arm(delay + interval * gap)
-      } catch {
+
+        const expires = delay + interval * gap
+        arm(expires)
+
+        log.trace('next registration scheduled', { delay, expires })
+      } catch (error) {
         attempt += 1
         delay = backoff(interval, attempt)
+
+        log.error('registration failed', { error, attempt, delay })
       }
 
       if (done) break
@@ -200,14 +259,17 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
   })
 
   try {
+    log.trace('pair handed to the loop', { i: null, n: null })
+
     yield IDLE
 
     for (;;) {
       if (done) break
 
-      if (mailbox !== null) {
-        const next = mailbox
-        mailbox = null
+      const next = take()
+
+      if (next !== null) {
+        log.trace('pair handed to the loop', { i: next.i, n: next.n })
 
         yield next
         continue
@@ -224,13 +286,21 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
     // signal reaches this: `break` leaves through the consumer, and a generator
     // cannot yield once that has happened.
     if (applied.i !== null) {
+      log.info('lease released', { i: applied.i, n: applied.n })
+
       applied = IDLE
+
+      log.trace('pair handed to the loop', { i: null, n: null })
 
       yield IDLE
     }
   } finally {
-    stop()
-    signal?.removeEventListener('abort', stop)
+    stop('closed')
+    signal?.removeEventListener('abort', abort)
     await driver
+
+    // Last of all, so an aborted loop reports the stand-down it still owed the
+    // body before it reports being over.
+    log.info('discover stopped', { reason })
   }
 }

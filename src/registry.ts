@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { sink, type Console } from './console.ts'
 import { REGISTER } from './lua.ts'
 
 /** One registration: what the group looked like, as of one call. */
@@ -44,6 +45,8 @@ export interface RedisRegistryOptions {
   interval: number
   /** Prepended to the key, for namespacing. */
   prefix?: string
+  /** Where to report what the registry is doing. */
+  console?: Console
 }
 
 /**
@@ -70,6 +73,7 @@ const isMissingScript = (error: unknown) =>
 export const redisRegistry = (redis: RedisLike, options: RedisRegistryOptions): Registry => {
   const key = base(options)
   const argv = [String(options.interval), String(options.interval * KEEP)]
+  const log = sink(options.console, { name: options.name })
 
   const byHash = isNodeRedis(redis)
     ? () => redis.evalSha(SHA, { keys: [key], arguments: argv })
@@ -85,6 +89,10 @@ export const redisRegistry = (redis: RedisLike, options: RedisRegistryOptions): 
       return await byHash()
     } catch (error) {
       if (!isMissingScript(error)) throw error
+
+      // Once per server, not once per worker: the source it is about to ship
+      // stays cached for everyone.
+      log.debug('script loaded', { sha: SHA })
 
       return await bySource()
     }

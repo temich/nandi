@@ -48,6 +48,7 @@ have. Nothing else is a dependency.
 | `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
 | `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
 | `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
+| `console`  |            | Where to report what the loop is doing.                    |
 
 \* A worker owns nothing until two consecutive closed intervals have agreed on
 its pair, so it starts consuming **no earlier than** two intervals after it
@@ -100,6 +101,36 @@ consumer has left — so draining from there is your own.
 Either way the worker stays counted in the interval it last registered in, so
 its slot goes unowned for up to one interval after it leaves, exactly as if it
 had crashed.
+
+### Diagnostics
+
+The library writes nowhere of its own accord. Pass a `console` and it reports
+what it is doing to that instead — anything with `trace`, `debug`, `info`,
+`warn` and `error`, each taking a message and an attributes object. The global
+`console` fits as it is:
+
+```ts
+discover({ redis, name: 'mail-sender', interval: 30_000, console })
+```
+
+Messages are constants and every value travels in the attributes, the group
+`name` included, so lines group by message whatever the backend does with the
+rest.
+
+| level   | message                       | attributes                              |
+| ------- | ----------------------------- | --------------------------------------- |
+| `error` | `registration failed`         | `error`, `attempt`, `delay`             |
+| `warn`  | `lease expired`               | `interval`, `after`                     |
+| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry` |
+| `info`  | `lease granted`               | `i`, `n`                                |
+| `info`  | `lease released`              | `i`, `n` — the pair given back          |
+| `info`  | `discover stopped`            | `reason`: `abort` or `closed`           |
+| `debug` | `registration completed`      | `interval`, `index`, `replicas`, `skew` |
+| `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                    |
+| `debug` | `script loaded`               | `sha`                                   |
+| `trace` | `pair agreed`                 | `i`, `n`                                |
+| `trace` | `next registration scheduled` | `delay`, `expires`                      |
+| `trace` | `pair handed to the loop`     | `i`, `n`                                |
 
 ## How it works
 
@@ -200,12 +231,14 @@ of draining first, can still finish a task another worker has since started.
 interval, because the count is a snapshot of who _was_ present. No membership
 scheme avoids this; only a shorter interval narrows it.
 
-**Registration failures are silent.** A blip is retried within the interval and
-costs nothing. Drifting past the slot it was due in by more than the gap expires
-the lease and hands the loop the idle pair rather than raising — whether the
-registration failed, or hung and never came back at all. A worker Redis has
-stopped counting stops consuming, and comes back the long way round, exactly as
-a restart would.
+**Registration failures never reach the loop.** A blip is retried within the
+interval and costs nothing. Drifting past the slot it was due in by more than
+the gap expires the lease and hands the loop the idle pair rather than raising —
+whether the registration failed, or hung and never came back at all. A worker
+Redis has stopped counting stops consuming, and comes back the long way round,
+exactly as a restart would. Silent is not the same as invisible: both show up on
+the `console` if you pass one, the first as `registration failed` and the second
+as `lease expired`.
 
 ## Redis Cluster
 
