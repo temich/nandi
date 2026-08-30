@@ -10,6 +10,7 @@ import {
   start,
   type Worker,
 } from './harness.ts'
+import { discover } from './discover.ts'
 import type { Registry, Tick } from './registry.ts'
 
 interface Track {
@@ -35,7 +36,7 @@ const track = (): Track => {
 }
 
 /** Where in its interval a registration landed, as a fraction. */
-const at = (tick: Tick, interval: number) => (tick.at % interval) / interval
+const phaseOf = (tick: Tick, interval: number) => (tick.at % interval) / interval
 
 const owns = (worker: Worker) => worker.peer().i !== null
 
@@ -46,8 +47,8 @@ describe('spreading', () => {
     await Promise.all(running.map(worker => worker.stop()))
   })
 
-  const spawn = (name: string, wrap?: (inner: Registry) => Registry) => {
-    const worker = start({ name, interval: INTERVAL }, { wrap })
+  const spawn = (name: string, wrap?: (inner: Registry) => Registry, gap?: number) => {
+    const worker = start({ name, interval: INTERVAL, gap }, { wrap })
     running.push(worker)
 
     return worker
@@ -86,13 +87,45 @@ describe('spreading', () => {
     await settle(() => assert.ok(workers.every(worker => owns(worker))), INTERVAL * 12)
     await sleep(INTERVAL * 4)
 
-    const phases = tracks.map(({ ticks }) => at(ticks.at(-1)!, INTERVAL)).toSorted((a, b) => a - b)
+    const phases = tracks
+      .map(({ ticks }) => phaseOf(ticks.at(-1)!, INTERVAL))
+      .toSorted((a, b) => a - b)
 
     for (let index = 1; index < phases.length; index++) {
       const gap = phases[index]! - phases[index - 1]!
 
       assert.ok(gap > 0.1, `workers bunched together at ${phases.join(', ')}`)
     }
+  })
+
+  it('keeps registrations inside the band the gap leaves', async () => {
+    const name = group()
+    const gap = 0.3
+    const tracks = Array.from({ length: 3 }, () => track())
+    const workers = tracks.map(({ wrap }) => spawn(name, wrap, gap))
+
+    await settle(() => assert.ok(workers.every(worker => owns(worker))), INTERVAL * 14)
+    await sleep(INTERVAL * 3)
+
+    // The first registration lands wherever the worker started; every one after
+    // it is placed, and a wider gap must squeeze them all into the middle.
+    for (const { ticks } of tracks)
+      for (const tick of ticks.slice(2)) {
+        const at = phaseOf(tick, INTERVAL)
+
+        assert.ok(at >= gap && at <= 1 - gap, `registered at ${at}, outside [${gap}, ${1 - gap}]`)
+      }
+  })
+
+  it('refuses a gap outside the band it has to fit in', async () => {
+    const registry: Registry = { register: () => Promise.reject(new Error('unused')) }
+
+    for (const gap of [0, 0.5, 1, -0.1, Number.NaN])
+      await assert.rejects(
+        () => discover({ registry, name: group(), interval: INTERVAL, gap }).next(),
+        RangeError,
+        `gap ${gap} must be refused`
+      )
   })
 
   it('registers at most once per interval', async () => {

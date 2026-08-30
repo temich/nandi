@@ -45,7 +45,7 @@ describe('discover', () => {
     await settle(() => assertPartitions(workers, 3), INTERVAL * 8)
   })
 
-  it('holds a new worker idle for a full interval, then takes it in', async () => {
+  it('holds a new worker idle for two intervals, then takes it in', async () => {
     const name = group()
     const workers = [spawn(name), spawn(name), spawn(name)]
 
@@ -54,7 +54,8 @@ describe('discover', () => {
     const joiner = spawn(name)
     workers.push(joiner)
 
-    // It registers straight away, but has no index from a closed interval yet.
+    // It registers straight away, but has no index from a closed interval yet,
+    // and needs two of them to agree before it owns anything.
     await sleep(INTERVAL * 0.75)
     assert.deepEqual(joiner.peer(), { i: null, n: null } satisfies Peer)
 

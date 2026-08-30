@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { after, describe, it } from 'node:test'
-import { connect, faulty, INTERVAL, group, settle, sleep, start, type Worker } from './harness.ts'
+import {
+  connect,
+  faulty,
+  INTERVAL,
+  group,
+  settle,
+  sleep,
+  start,
+  type Fault,
+  type Worker,
+} from './harness.ts'
 import { discover, type Peer } from './discover.ts'
 import { redisRegistry } from './registry.ts'
 
@@ -22,8 +32,21 @@ const reached = async (name: string) => {
 describe('lifecycle', () => {
   const running: Worker[] = []
   const connections: ReturnType<typeof connect>[] = []
+  const faults: Fault[] = []
+
+  /** A fault injector that is always released, however the test ends. */
+  const injected = (name: string, redis: ReturnType<typeof connect>) => {
+    const outage = faulty(redisRegistry(redis, { name, interval: INTERVAL }))
+    faults.push(outage)
+
+    return outage
+  }
 
   after(async () => {
+    // Stopping a worker awaits its loop, and a loop parked on a stalled
+    // registration never returns. Release everything before shutting down.
+    for (const outage of faults) outage.heal()
+
     await Promise.all(running.map(worker => worker.stop()))
     await Promise.all(connections.map(redis => redis.quit()))
   })
@@ -33,7 +56,7 @@ describe('lifecycle', () => {
     const redis = connect()
     connections.push(redis)
 
-    const outage = faulty(redisRegistry(redis, { name, interval: INTERVAL }))
+    const outage = injected(name, redis)
     const worker = start({ name, interval: INTERVAL }, { wrap: () => outage.registry })
     running.push(worker)
 
@@ -44,6 +67,81 @@ describe('lifecycle', () => {
 
     outage.heal()
     await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 8)
+  })
+
+  it('goes idle when registration hangs, without ever failing', async () => {
+    const name = group()
+    const redis = connect()
+    connections.push(redis)
+
+    const outage = injected(name, redis)
+    const worker = start({ name, interval: INTERVAL }, { wrap: () => outage.registry })
+    running.push(worker)
+
+    await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 8)
+
+    // Nothing throws and nothing returns: the case a client with no command
+    // timeout leaves a worker in. Only the stand-down timer can notice it.
+    outage.stall()
+    await settle(() => assert.ok(!owns(worker.peer()), 'must stop consuming'), INTERVAL * 4)
+
+    assert.ok(outage.hanging() > 0, 'the registration must still be in flight')
+    assert.equal(outage.failures(), 0, 'nothing was rejected, so nothing was on the error path')
+
+    outage.heal()
+    await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 10)
+  })
+
+  it('does not spend a cycle on a single blip', async () => {
+    const name = group()
+    const redis = connect()
+    connections.push(redis)
+
+    const outage = injected(name, redis)
+    const worker = start({ name, interval: INTERVAL }, { wrap: () => outage.registry })
+    running.push(worker)
+
+    await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 8)
+
+    const before = worker.seen.length
+    outage.fail(1)
+
+    await settle(() => assert.equal(outage.failures(), 1), INTERVAL * 4)
+
+    // The retry lands inside the grace, so the worker never lost its slot.
+    await sleep(INTERVAL * 2)
+
+    assert.deepEqual(
+      worker.seen.slice(before),
+      [],
+      'one failed attempt must not cost the worker its pair'
+    )
+  })
+
+  it('comes back from a stand-down as if it had restarted', async () => {
+    const name = group()
+    const redis = connect()
+    connections.push(redis)
+
+    const outage = injected(name, redis)
+    const worker = start({ name, interval: INTERVAL }, { wrap: () => outage.registry })
+    running.push(worker)
+
+    await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 8)
+
+    outage.fail()
+    await settle(() => assert.ok(!owns(worker.peer())), INTERVAL * 4)
+
+    outage.heal()
+    const healed = Date.now()
+    await settle(() => assert.deepEqual(worker.peer(), { i: 0, n: 1 }), INTERVAL * 10)
+
+    // Standing down drops the held index and the pair it had agreed on, so the
+    // worker owes the group two intervals again, exactly as a restart would.
+    assert.ok(
+      Date.now() - healed >= INTERVAL * 1.5,
+      `took ${Date.now() - healed}ms to own again, less than two intervals`
+    )
   })
 
   it('never hands out the same pair twice in a row', async () => {
