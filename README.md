@@ -26,12 +26,13 @@ which to hand work over: stop consuming, drain, adopt the new pair, resume. A
 settled group yields once and then stays quiet for as long as its membership
 holds.
 
-What it hands you is a lease. Two consecutive intervals have to agree on a pair
-before it reaches the loop, and it then runs for one interval and a little over,
-renewed by every registration that agrees again. When one does not arrive — the
-server is gone, slow, or answering nothing at all — the lease runs out and the
-loop hands you the idle pair instead. Nothing outside the worker revokes it, so
-there is never anything to wait for.
+What it hands you is an exclusive lease. Two consecutive intervals have to agree
+on a pair before it reaches the loop, and it then runs for `interval + gap`,
+renewed by every registration that agrees again. Exclusive is meant literally:
+while you hold `i`, no other worker in the group holds it. When a registration
+does not arrive — the server is gone, slow, or answering nothing at all — the
+lease runs out and the loop hands you the idle pair instead. Nothing outside the
+worker revokes it, so there is never anything to wait for.
 
 `redis` is an [ioredis](https://github.com/redis/ioredis) or
 [node-redis](https://github.com/redis/node-redis) client — whichever you already
@@ -136,8 +137,8 @@ could be picked up twice. So a worker owns a slot only when the interval before
 last implied the same pair, and otherwise owns nothing until it does. Two
 answers in a row are what issue the lease; a disagreement is what withholds it.
 
-That is enough to rule the overlap out, without a coordinator. At any moment the
-group spans two consecutive intervals at most. Owning `i` through the later one
+That is what makes the lease exclusive, and it needs no coordinator. At any
+moment the group spans two consecutive intervals at most. Owning `i` through the later one
 means having held `i` through the earlier one too, and `INCR` hands out distinct
 indices inside an interval — so the two claimants are the same worker. What it
 costs is a stand-down: any change to `n` changes every pair, so the whole group
