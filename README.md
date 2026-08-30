@@ -1,7 +1,10 @@
-# Distributed peer indexing with Redis
+# Distributed peer indexing
 
 Workers that split a shared task source by `task.id % n === i` need two numbers.
 [Read more](https://temich.net/notes/peers/)
+
+The library works them out for systems with dynamic topology, using Redis as the
+coordinator.
 
 ## Usage
 
