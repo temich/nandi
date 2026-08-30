@@ -38,6 +38,33 @@ worker revokes it, so there is never anything to wait for.
 [node-redis](https://github.com/redis/node-redis) client — whichever you already
 have. Nothing else is a dependency.
 
+### Options
+
+| Option     |            |                                                            |
+| ---------- | ---------- | ---------------------------------------------------------- |
+| `redis`    | required   | An ioredis or node-redis client.                           |
+| `name`     | required   | Worker group name, for example `mail-sender`.              |
+| `interval` | required\* | Interval length in milliseconds.                           |
+| `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
+| `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
+| `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
+
+\* A worker owns nothing until two consecutive closed intervals have agreed on
+its pair, so it starts consuming **no earlier than** two intervals after it
+comes up.
+
+### Choosing an interval
+
+Ten to thirty seconds suits most groups. The interval has to comfortably exceed
+a registration round trip and the jitter around it, and it also sets the pace of
+everything else: a new worker waits two intervals before it owns anything, and a
+departure costs the group about one interval of standing down.
+
+Short intervals react faster but spend a larger share of themselves in transit,
+and leave less room between workers. Long intervals are calmer but slower to
+reflect reality. Nothing below a second is sensible in production, though the
+library enforces no floor — its own tests run at 300ms.
+
 ### Shutting down
 
 Aborting the signal yields the idle pair one last time before the loop finishes,
@@ -73,33 +100,6 @@ consumer has left — so draining from there is your own.
 Either way the worker stays counted in the interval it last registered in, so
 its slot goes unowned for up to one interval after it leaves, exactly as if it
 had crashed.
-
-### Options
-
-| Option     |            |                                                            |
-| ---------- | ---------- | ---------------------------------------------------------- |
-| `redis`    | required   | An ioredis or node-redis client.                           |
-| `name`     | required   | Worker group name, for example `mail-sender`.              |
-| `interval` | required\* | Interval length in milliseconds.                           |
-| `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
-| `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
-| `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
-
-\* A worker owns nothing until two consecutive closed intervals have agreed on
-its pair, so it starts consuming **no earlier than** two intervals after it
-comes up.
-
-### Choosing an interval
-
-Ten to thirty seconds suits most groups. The interval has to comfortably exceed
-a registration round trip and the jitter around it, and it also sets the pace of
-everything else: a new worker waits two intervals before it owns anything, and a
-departure costs the group about one interval of standing down.
-
-Short intervals react faster but spend a larger share of themselves in transit,
-and leave less room between workers. Long intervals are calmer but slower to
-reflect reality. Nothing below a second is sensible in production, though the
-library enforces no floor — its own tests run at 300ms.
 
 ## How it works
 
