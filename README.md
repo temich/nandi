@@ -73,18 +73,20 @@ had crashed.
 | `redis`    | required   | An ioredis or node-redis client.                           |
 | `name`     | required   | Worker group name, for example `mail-sender`.              |
 | `interval` | required\* | Interval length in milliseconds.                           |
+| `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
 | `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
 | `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
 
-\* A worker owns nothing until the interval it registered in has closed, so it
-starts consuming **no earlier than** one interval after it comes up.
+\* A worker owns nothing until two consecutive closed intervals have agreed on
+its pair, so it starts consuming **no earlier than** two intervals after it
+comes up.
 
 ### Choosing an interval
 
 Ten to thirty seconds suits most groups. The interval has to comfortably exceed
 a registration round trip and the jitter around it, and it also sets the pace of
-everything else: a new worker waits one interval before it owns anything, and a
-departure is noticed one interval after it happens.
+everything else: a new worker waits two intervals before it owns anything, and a
+departure costs the group about one interval of standing down.
 
 Short intervals react faster but spend a larger share of themselves in transit,
 and leave less room between workers. Long intervals are calmer but slower to
@@ -119,39 +121,81 @@ that stalled past an interval or restarted — the absence of a usable index is
 what makes it wait, and no identity or registry of members is needed to detect
 it.
 
+**And the pair has to hold for two intervals running.** Each worker adopts its
+new pair when its own registration returns, not at a shared instant, so a pair
+that has just changed is not yet the one the whole group is on. Publishing it
+straight away would put two mappings live at once, and a task that changed hands
+could be picked up twice. So a worker owns a slot only when the interval before
+last implied the same pair, and otherwise owns nothing until it does.
+
+That is enough to rule the overlap out, without a coordinator. At any moment the
+group spans two consecutive intervals at most. Owning `i` through the later one
+means having held `i` through the earlier one too, and `INCR` hands out distinct
+indices inside an interval — so the two claimants are the same worker. What it
+costs is a stand-down: any change to `n` changes every pair, so the whole group
+lets go for an interval and comes back together, on the same slots. Registration
+carries on throughout, which is what brings the group back to the arrangement it
+had.
+
 ### Registration timing
 
 Workers do not all register at the same moment. Each fires at `(i + 0.5) / n` of
-the interval, worked out from the values its previous call returned and kept
-clear of the boundaries. Ordering then stops depending on network jitter, and
-the arrangement is self-reinforcing: a worker holding index 2 of 5 fires third
-and is handed index 2 again.
+the interval, worked out from the values its previous call returned. Ordering
+then stops depending on network jitter, and the arrangement is
+self-reinforcing: a worker holding index 2 of 5 fires third and is handed index
+2 again.
+
+The spread covers `interval - 2 * gap`, so nobody sits on a boundary where a
+little jitter would carry the registration into the neighbouring key. The same
+`gap` is how far past its slot a worker may drift before it stands down — one
+number, because the two have to agree: a worker that missed a registration is
+running on a mapping two intervals old, and it has to be gone before anyone
+takes up a newer one. Standing down `gap` late always beats the `2 * gap` the
+band leaves for it, whatever the gap is set to.
+
+Widening it makes the scheme more forgiving of slow round trips and stalled
+event loops, at the cost of bunching registrations toward the middle of the
+interval. Narrowing it does the reverse; below about `0.125` a single failed
+registration costs the worker a cycle, because the first retry no longer lands
+inside the slack. It has to sit between 0 and 0.5.
 
 A settled group keeps its assignment indefinitely. A join shifts only the
-workers after the insertion point; a departure shifts only those after the gap.
+indices after the insertion point; a departure shifts only those after the gap.
 Two workers that do collide are handed different indices and separate on the
 next interval.
 
+Registration is independent of ownership: a worker holds its slot in the
+interval throughout a stand-down, so the group comes back onto the indices it
+already had rather than having to agree on an order again.
+
 ## What this does not give you
 
-**Ownership is eventual.** The pair in force describes the previous interval, so
-membership changes take one to two intervals to show up. This suits groups that
-tolerate controlled rebalancing; it is not a substitute for a real coordination
-protocol when ownership must change immediately and consistently.
+**Ownership is eventual.** The pair in force describes intervals that have
+already closed, so membership changes take two to three of them to show up. This
+suits groups that tolerate controlled rebalancing; it is not a substitute for a
+real coordination protocol when ownership must change immediately and
+consistently.
 
-**Rebalances have a window.** Each worker adopts a new pair when its own
-registration returns, not at a shared instant, so for a fraction of an interval
-during a rebalance two mappings are live across the group and a task that
-changed hands can be picked up twice. Consumers that need at-most-once have to
-fence the work itself.
+**Rebalances cost an interval.** No two workers are ever handed the same index
+at the same moment, but the price is that a membership change stands the whole
+group down for about an interval before it comes back on the new `n`. Groups
+that would rather keep serving through a rebalance, and fence the work
+themselves, want a different scheme.
+
+**The guarantee ends at the loop body.** What the group never does is hand the
+same index to two workers at once. What happens to work already in flight is
+yours: a consumer that keeps going after it has been handed a new pair, instead
+of draining first, can still finish a task another worker has since started.
 
 **A worker that registers and then dies leaves its slot unowned** until the next
 interval, because the count is a snapshot of who _was_ present. No membership
 scheme avoids this; only a shorter interval narrows it.
 
-**Registration failures are silent.** A blip is retried within the interval, and
-a full interval with no successful registration hands the loop the idle pair
-rather than raising. A worker Redis has stopped counting stops consuming.
+**Registration failures are silent.** A blip is retried within the interval and
+costs nothing. Drifting past the slot it was due in by more than a small grace
+hands the loop the idle pair rather than raising — whether the registration
+failed, or hung and never came back at all. A worker Redis has stopped counting
+stops consuming, and comes back the long way round, exactly as a restart would.
 
 ## Redis Cluster
 

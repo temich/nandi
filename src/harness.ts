@@ -34,31 +34,83 @@ export const settle = async (check: () => unknown, timeout = 5000, step = 25) =>
 
 export interface Fault {
   registry: Registry
-  /** Every subsequent registration fails until {@link Fault.heal}. */
-  fail: () => void
+  /** Fails the next `times` registrations, or every one until {@link Fault.heal}. */
+  fail: (times?: number) => void
+  /** Registrations rejected so far. */
+  failures: () => number
+  /**
+   * Every subsequent registration hangs until {@link Fault.heal} — the case a
+   * client with no command timeout leaves a worker in. How many attempts have
+   * been swallowed so far is on {@link Fault.hanging}.
+   */
+  stall: () => void
+  /** Registrations left hanging and not yet settled. */
+  hanging: () => number
+  /** Restores the registry, settling anything {@link Fault.stall} held open. */
   heal: () => void
 }
 
 /** Wraps a real registry so a test can cut it off and restore it. */
 export const faulty = (inner: Registry): Fault => {
-  let broken = false
+  let mode: 'well' | 'broken' | 'stalled' = 'well'
+  let left = Infinity
+  let failures = 0
+  let held: ((reason: Error) => void)[] = []
+
+  const hang = () =>
+    new Promise<never>((_resolve, reject) => {
+      held.push(reject)
+    })
 
   return {
     registry: {
-      register: () => (broken ? Promise.reject(new Error('injected outage')) : inner.register()),
+      register: () => {
+        if (mode === 'broken' && left > 0) {
+          left -= 1
+          failures += 1
+
+          return Promise.reject(new Error('injected outage'))
+        }
+
+        if (mode === 'stalled') return hang()
+
+        return inner.register()
+      },
     },
-    fail: () => {
-      broken = true
+    fail: (times = Infinity) => {
+      mode = 'broken'
+      left = times
     },
+    failures: () => failures,
+    stall: () => {
+      mode = 'stalled'
+    },
+    hanging: () => held.length,
     heal: () => {
-      broken = false
+      mode = 'well'
+      left = Infinity
+
+      // A real client rejects its in-flight commands when the connection goes;
+      // leaving them pending would hang the worker's shutdown, and the test.
+      const pending = held
+      held = []
+
+      for (const reject of pending) reject(new Error('injected outage'))
     },
   }
+}
+
+/** A pair the loop body was handed, and when it was handed it. */
+export interface Handed {
+  peer: Peer
+  at: number
 }
 
 export interface Worker {
   /** Every pair the worker has been handed, in order. */
   seen: Peer[]
+  /** The same, timestamped, for reasoning about who owned what and when. */
+  handed: Handed[]
   peer: () => Peer
   stop: () => Promise<void>
 }
@@ -77,6 +129,7 @@ export const start = (
 ): Worker => {
   const redis = connect()
   const seen: Peer[] = []
+  const handed: Handed[] = []
   const control = new AbortController()
 
   const inner = redisRegistry(redis, {
@@ -95,6 +148,9 @@ export const start = (
     })
 
     for await (const peer of peers) {
+      // Timestamped before the consumer runs: this is the moment the worker
+      // starts acting on the pair, which is what overlap is measured between.
+      handed.push({ peer, at: Date.now() })
       seen.push(peer)
       await onPeer?.(peer)
     }
@@ -102,6 +158,7 @@ export const start = (
 
   return {
     seen,
+    handed,
     peer: () => seen[seen.length - 1] ?? { i: null, n: null },
     stop() {
       // Tests stop a worker to model it leaving, and again on teardown.
