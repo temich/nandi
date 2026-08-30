@@ -26,9 +26,45 @@ which to hand work over: stop consuming, drain, adopt the new pair, resume. A
 settled group yields once and then stays quiet for as long as its membership
 holds.
 
+What it hands you is an exclusive lease. Two consecutive intervals have to agree
+on a pair before it reaches the loop, and it then runs for `interval + gap`,
+renewed by every registration that agrees again. Exclusive is meant literally:
+while you hold `i`, no other worker in the group holds it. When a registration
+does not arrive — the server is gone, slow, or answering nothing at all — the
+lease runs out and the loop hands you the idle pair instead. Nothing outside the
+worker revokes it, so there is never anything to wait for.
+
 `redis` is an [ioredis](https://github.com/redis/ioredis) or
 [node-redis](https://github.com/redis/node-redis) client — whichever you already
 have. Nothing else is a dependency.
+
+### Options
+
+| Option     |            |                                                            |
+| ---------- | ---------- | ---------------------------------------------------------- |
+| `redis`    | required   | An ioredis or node-redis client.                           |
+| `name`     | required   | Worker group name, for example `mail-sender`.              |
+| `interval` | required\* | Interval length in milliseconds.                           |
+| `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
+| `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
+| `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
+| `console`  |            | Where to report what the loop is doing.                    |
+
+\* A worker owns nothing until two consecutive closed intervals have agreed on
+its pair, so it starts consuming **no earlier than** two intervals after it
+comes up.
+
+### Choosing an interval
+
+Ten to thirty seconds suits most groups. The interval has to comfortably exceed
+a registration round trip and the jitter around it, and it also sets the pace of
+everything else: a new worker waits two intervals before it owns anything, and a
+departure costs the group about one interval of standing down.
+
+Short intervals react faster but spend a larger share of themselves in transit,
+and leave less room between workers. Long intervals are calmer but slower to
+reflect reality. Nothing below a second is sensible in production, though the
+library enforces no floor — its own tests run at 300ms.
 
 ### Shutting down
 
@@ -66,32 +102,35 @@ Either way the worker stays counted in the interval it last registered in, so
 its slot goes unowned for up to one interval after it leaves, exactly as if it
 had crashed.
 
-### Options
+### Diagnostics
 
-| Option     |            |                                                            |
-| ---------- | ---------- | ---------------------------------------------------------- |
-| `redis`    | required   | An ioredis or node-redis client.                           |
-| `name`     | required   | Worker group name, for example `mail-sender`.              |
-| `interval` | required\* | Interval length in milliseconds.                           |
-| `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
-| `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
-| `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
+The library writes nowhere of its own accord. Pass a `console` and it reports
+what it is doing to that instead — anything with `trace`, `debug`, `info`,
+`warn` and `error`, each taking a message and an attributes object. The global
+`console` fits as it is:
 
-\* A worker owns nothing until two consecutive closed intervals have agreed on
-its pair, so it starts consuming **no earlier than** two intervals after it
-comes up.
+```ts
+discover({ redis, name: 'mail-sender', interval: 30_000, console })
+```
 
-### Choosing an interval
+Messages are constants and every value travels in the attributes, the group
+`name` included, so lines group by message whatever the backend does with the
+rest.
 
-Ten to thirty seconds suits most groups. The interval has to comfortably exceed
-a registration round trip and the jitter around it, and it also sets the pace of
-everything else: a new worker waits two intervals before it owns anything, and a
-departure costs the group about one interval of standing down.
-
-Short intervals react faster but spend a larger share of themselves in transit,
-and leave less room between workers. Long intervals are calmer but slower to
-reflect reality. Nothing below a second is sensible in production, though the
-library enforces no floor — its own tests run at 300ms.
+| level   | message                       | attributes                              |
+| ------- | ----------------------------- | --------------------------------------- |
+| `error` | `registration failed`         | `error`, `attempt`, `delay`             |
+| `warn`  | `lease expired`               | `interval`, `after`                     |
+| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry` |
+| `info`  | `lease granted`               | `i`, `n`                                |
+| `info`  | `lease released`              | `i`, `n` — the pair given back          |
+| `info`  | `discover stopped`            | `reason`: `abort` or `closed`           |
+| `debug` | `registration completed`      | `interval`, `index`, `replicas`, `skew` |
+| `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                    |
+| `debug` | `script loaded`               | `sha`                                   |
+| `trace` | `pair agreed`                 | `i`, `n`                                |
+| `trace` | `next registration scheduled` | `delay`, `expires`                      |
+| `trace` | `pair handed to the loop`     | `i`, `n`                                |
 
 ## How it works
 
@@ -126,10 +165,11 @@ new pair when its own registration returns, not at a shared instant, so a pair
 that has just changed is not yet the one the whole group is on. Publishing it
 straight away would put two mappings live at once, and a task that changed hands
 could be picked up twice. So a worker owns a slot only when the interval before
-last implied the same pair, and otherwise owns nothing until it does.
+last implied the same pair, and otherwise owns nothing until it does. Two
+answers in a row are what issue the lease; a disagreement is what withholds it.
 
-That is enough to rule the overlap out, without a coordinator. At any moment the
-group spans two consecutive intervals at most. Owning `i` through the later one
+That is what makes the lease exclusive, and it needs no coordinator. At any
+moment the group spans two consecutive intervals at most. Owning `i` through the later one
 means having held `i` through the earlier one too, and `INCR` hands out distinct
 indices inside an interval — so the two claimants are the same worker. What it
 costs is a stand-down: any change to `n` changes every pair, so the whole group
@@ -191,11 +231,14 @@ of draining first, can still finish a task another worker has since started.
 interval, because the count is a snapshot of who _was_ present. No membership
 scheme avoids this; only a shorter interval narrows it.
 
-**Registration failures are silent.** A blip is retried within the interval and
-costs nothing. Drifting past the slot it was due in by more than a small grace
-hands the loop the idle pair rather than raising — whether the registration
-failed, or hung and never came back at all. A worker Redis has stopped counting
-stops consuming, and comes back the long way round, exactly as a restart would.
+**Registration failures never reach the loop.** A blip is retried within the
+interval and costs nothing. Drifting past the slot it was due in by more than
+the gap expires the lease and hands the loop the idle pair rather than raising —
+whether the registration failed, or hung and never came back at all. A worker
+Redis has stopped counting stops consuming, and comes back the long way round,
+exactly as a restart would. Silent is not the same as invisible: both show up on
+the `console` if you pass one, the first as `registration failed` and the second
+as `lease expired`.
 
 ## Redis Cluster
 

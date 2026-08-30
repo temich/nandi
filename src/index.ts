@@ -1,3 +1,4 @@
+export { type Console } from './console.ts'
 export { discover, pair, type DiscoverOptions, type Peer } from './discover.ts'
 export {
   base,
