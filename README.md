@@ -26,6 +26,13 @@ which to hand work over: stop consuming, drain, adopt the new pair, resume. A
 settled group yields once and then stays quiet for as long as its membership
 holds.
 
+What it hands you is a lease. Two consecutive intervals have to agree on a pair
+before it reaches the loop, and it then runs for one interval and a little over,
+renewed by every registration that agrees again. When one does not arrive — the
+server is gone, slow, or answering nothing at all — the lease runs out and the
+loop hands you the idle pair instead. Nothing outside the worker revokes it, so
+there is never anything to wait for.
+
 `redis` is an [ioredis](https://github.com/redis/ioredis) or
 [node-redis](https://github.com/redis/node-redis) client — whichever you already
 have. Nothing else is a dependency.
@@ -126,7 +133,8 @@ new pair when its own registration returns, not at a shared instant, so a pair
 that has just changed is not yet the one the whole group is on. Publishing it
 straight away would put two mappings live at once, and a task that changed hands
 could be picked up twice. So a worker owns a slot only when the interval before
-last implied the same pair, and otherwise owns nothing until it does.
+last implied the same pair, and otherwise owns nothing until it does. Two
+answers in a row are what issue the lease; a disagreement is what withholds it.
 
 That is enough to rule the overlap out, without a coordinator. At any moment the
 group spans two consecutive intervals at most. Owning `i` through the later one
@@ -192,10 +200,11 @@ interval, because the count is a snapshot of who _was_ present. No membership
 scheme avoids this; only a shorter interval narrows it.
 
 **Registration failures are silent.** A blip is retried within the interval and
-costs nothing. Drifting past the slot it was due in by more than a small grace
-hands the loop the idle pair rather than raising — whether the registration
-failed, or hung and never came back at all. A worker Redis has stopped counting
-stops consuming, and comes back the long way round, exactly as a restart would.
+costs nothing. Drifting past the slot it was due in by more than the gap expires
+the lease and hands the loop the idle pair rather than raising — whether the
+registration failed, or hung and never came back at all. A worker Redis has
+stopped counting stops consuming, and comes back the long way round, exactly as
+a restart would.
 
 ## Redis Cluster
 
