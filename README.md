@@ -44,22 +44,20 @@ have. Nothing else is a dependency.
 | ---------- | ---------- | ---------------------------------------------------------- |
 | `redis`    | required   | An ioredis or node-redis client.                           |
 | `name`     | required   | Worker group name, for example `mail-sender`.              |
-| `interval` | required\* | Interval length in milliseconds.                           |
+| `interval` | required   | Interval length in milliseconds.                           |
 | `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
 | `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
 | `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
 | `console`  |            | Where to report what the loop is doing.                    |
 
-\* A worker owns nothing until two consecutive closed intervals have agreed on
-its pair, so it starts consuming **no earlier than** two intervals after it
-comes up.
-
 ### Choosing an interval
 
 Ten to thirty seconds suits most groups. The interval has to comfortably exceed
 a registration round trip and the jitter around it, and it also sets the pace of
-everything else: a new worker waits two intervals before it owns anything, and a
-departure costs the group about one interval of standing down.
+everything else. A worker owns nothing until two consecutive closed intervals
+have agreed on its pair, so a new one starts consuming **no earlier than** two
+intervals after it comes up, and a departure costs the group about one interval
+of standing down.
 
 Short intervals react faster but spend a larger share of themselves in transit,
 and leave less room between workers. Long intervals are calmer but slower to
@@ -101,36 +99,6 @@ consumer has left — so draining from there is your own.
 Either way the worker stays counted in the interval it last registered in, so
 its slot goes unowned for up to one interval after it leaves, exactly as if it
 had crashed.
-
-### Diagnostics
-
-The library writes nowhere of its own accord. Pass a `console` and it reports
-what it is doing to that instead — anything with `trace`, `debug`, `info`,
-`warn` and `error`, each taking a message and an attributes object. The global
-`console` fits as it is:
-
-```ts
-discover({ redis, name: 'mail-sender', interval: 30_000, console })
-```
-
-Messages are constants and every value travels in the attributes, the group
-`name` included, so lines group by message whatever the backend does with the
-rest.
-
-| level   | message                       | attributes                              |
-| ------- | ----------------------------- | --------------------------------------- |
-| `error` | `registration failed`         | `error`, `attempt`, `delay`             |
-| `warn`  | `lease expired`               | `interval`, `after`                     |
-| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry` |
-| `info`  | `lease granted`               | `i`, `n`                                |
-| `info`  | `lease released`              | `i`, `n` — the pair given back          |
-| `info`  | `discover stopped`            | `reason`: `abort` or `closed`           |
-| `debug` | `registration completed`      | `interval`, `index`, `replicas`, `skew` |
-| `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                    |
-| `debug` | `script loaded`               | `sha`                                   |
-| `trace` | `pair agreed`                 | `i`, `n`                                |
-| `trace` | `next registration scheduled` | `delay`, `expires`                      |
-| `trace` | `pair handed to the loop`     | `i`, `n`                                |
 
 ## How it works
 
@@ -245,6 +213,36 @@ as `lease expired`.
 Keys are written as `{name}:N`. The braces are a hash tag, so every interval key
 of a group lands in one slot and the two keys the script touches are never
 cross-slot.
+
+## Diagnostics
+
+The library writes nowhere of its own accord. Pass a `console` and it reports
+what it is doing to that instead — anything with `trace`, `debug`, `info`,
+`warn` and `error`, each taking a message and an attributes object. The global
+`console` fits as it is:
+
+```ts
+discover({ redis, name: 'mail-sender', interval: 30_000, console })
+```
+
+Messages are constants and every value travels in the attributes, the group
+`name` included, so lines group by message whatever the backend does with the
+rest.
+
+| level   | message                       | attributes                              |
+| ------- | ----------------------------- | --------------------------------------- |
+| `error` | `registration failed`         | `error`, `attempt`, `delay`             |
+| `warn`  | `lease expired`               | `interval`, `after`                     |
+| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry` |
+| `info`  | `lease granted`               | `i`, `n`                                |
+| `info`  | `lease released`              | `i`, `n` — the pair given back          |
+| `info`  | `discover stopped`            | `reason`: `abort` or `closed`           |
+| `debug` | `registration completed`      | `interval`, `index`, `replicas`, `skew` |
+| `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                    |
+| `debug` | `script loaded`               | `sha`                                   |
+| `trace` | `pair agreed`                 | `i`, `n`                                |
+| `trace` | `next registration scheduled` | `delay`, `expires`                      |
+| `trace` | `pair handed to the loop`     | `i`, `n`                                |
 
 ## Development
 
