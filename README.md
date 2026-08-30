@@ -52,6 +52,9 @@ have. Nothing else is a dependency.
 
 ### Choosing an interval
 
+> TL;DR: set it to 5 seconds.
+> After your first downtime read this section carefully.
+
 The interval has to comfortably exceed a registration round trip and the jitter
 around it, and it also sets the pace of everything else. A worker owns nothing
 until two consecutive closed intervals have agreed on its pair, so a new one
