@@ -52,7 +52,7 @@ have. Nothing else is a dependency.
 
 ### Choosing an interval
 
-> TL;DR: set it to 5 seconds.
+> TL;DR: set it to 5 seconds.<br/>
 > After your first downtime read this section carefully.
 
 The interval has to comfortably exceed a registration round trip and the jitter
