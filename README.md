@@ -34,15 +34,11 @@ does not arrive — the server is gone, slow, or answering nothing at all — th
 lease runs out and the loop hands you the idle pair instead. Nothing outside the
 worker revokes it, so there is never anything to wait for.
 
-`redis` is an [ioredis](https://github.com/redis/ioredis) or
-[node-redis](https://github.com/redis/node-redis) client — whichever you already
-have. Nothing else is a dependency.
-
 ### Options
 
 | Option     |            |                                                            |
 | ---------- | ---------- | ---------------------------------------------------------- |
-| `redis`    | required   | An ioredis or node-redis client.                           |
+| `redis`    | required   | An [ioredis](https://github.com/redis/ioredis) or [node-redis](https://github.com/redis/node-redis) client.                           |
 | `name`     | required   | Worker group name, for example `mail-sender`.              |
 | `interval` | required   | Interval length in milliseconds.                           |
 | `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
