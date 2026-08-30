@@ -52,12 +52,11 @@ have. Nothing else is a dependency.
 
 ### Choosing an interval
 
-Ten to thirty seconds suits most groups. The interval has to comfortably exceed
-a registration round trip and the jitter around it, and it also sets the pace of
-everything else. A worker owns nothing until two consecutive closed intervals
-have agreed on its pair, so a new one starts consuming **no earlier than** two
-intervals after it comes up, and a departure costs the group about one interval
-of standing down.
+The interval has to comfortably exceed a registration round trip and the jitter
+around it, and it also sets the pace of everything else. A worker owns nothing
+until two consecutive closed intervals have agreed on its pair, so a new one
+starts consuming **no earlier than** two intervals after it comes up, and a
+departure costs the group about one interval of standing down.
 
 Short intervals react faster but spend a larger share of themselves in transit,
 and leave less room between workers. Long intervals are calmer but slower to
