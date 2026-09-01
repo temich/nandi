@@ -19,6 +19,7 @@ const MESSAGES = new Set([
   'script loaded',
   'pair agreed',
   'pair disagreed',
+  'no pair implied',
   'next registration scheduled',
   'pair handed to the loop',
 ])
