@@ -215,7 +215,7 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
         const now = Date.now()
         const next = pair(held, tick)
 
-        log.debug('registration completed', {
+        log.trace('registration completed', {
           interval: tick.interval,
           index: tick.index,
           replicas: tick.replicas,

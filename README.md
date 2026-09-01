@@ -39,15 +39,15 @@ worker revokes it, so there is never anything to wait for.
 
 ### Options
 
-| Option     |            |                                                            |
-| ---------- | ---------- | ---------------------------------------------------------- |
-| `redis`    | required   | An [ioredis](https://github.com/redis/ioredis) or [node-redis](https://github.com/redis/node-redis) client.                           |
-| `name`     | required   | Worker group name, for example `mail-sender`.              |
-| `interval` | required   | Interval length in milliseconds.                           |
-| `gap`      | `0.15`     | Timing slack, as a fraction of the interval.               |
-| `prefix`   | `''`       | Prepended to the key, for namespacing.                     |
-| `signal`   |            | An `AbortSignal`; aborting ends the loop, as `break` does. |
-| `console`  |            | Where to report what the loop is doing.                    |
+| Option     |          |                                                                                                             |
+| ---------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `redis`    | required | An [ioredis](https://github.com/redis/ioredis) or [node-redis](https://github.com/redis/node-redis) client. |
+| `name`     | required | Worker group name, for example `mail-sender`.                                                               |
+| `interval` | required | Interval length in milliseconds.                                                                            |
+| `gap`      | `0.15`   | Timing slack, as a fraction of the interval.                                                                |
+| `prefix`   | `''`     | Prepended to the key, for namespacing.                                                                      |
+| `signal`   |          | An `AbortSignal`; aborting ends the loop, as `break` does.                                                  |
+| `console`  |          | Where to report what the loop is doing.                                                                     |
 
 ### Choosing an interval
 
@@ -230,20 +230,21 @@ Messages are constants and every value travels in the attributes, the group
 `name` included, so lines group by message whatever the backend does with the
 rest.
 
-| level   | message                       | attributes                              |
-| ------- | ----------------------------- | --------------------------------------- |
-| `error` | `registration failed`         | `error`, `attempt`, `delay`             |
-| `warn`  | `lease expired`               | `interval`, `after`                     |
-| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry` |
-| `info`  | `lease granted`               | `i`, `n`                                |
-| `info`  | `lease released`              | `i`, `n` — the pair given back          |
-| `info`  | `discover stopped`            | `reason`: `abort` or `closed`           |
-| `debug` | `registration completed`      | `interval`, `index`, `replicas`, `skew` |
-| `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                    |
-| `debug` | `script loaded`               | `sha`                                   |
-| `trace` | `pair agreed`                 | `i`, `n`                                |
-| `trace` | `next registration scheduled` | `delay`, `expires`                      |
-| `trace` | `pair handed to the loop`     | `i`, `n`                                |
+| level   | message                       | attributes                                    |
+| ------- | ----------------------------- | --------------------------------------------- |
+| `error` | `registration failed`         | `error`, `attempt`, `delay`                   |
+| `warn`  | `lease expired`               | `interval`, `after`                           |
+| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry`       |
+| `info`  | `lease granted`               | `i`, `n`                                      |
+| `info`  | `lease released`              | `i`, `n` — the pair given back                |
+| `info`  | `discover stopped`            | `reason`: `abort` or `closed`                 |
+| `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                          |
+| `debug` | `script loaded`               | `sha`                                         |
+| `trace` | `registration completed`      | `interval`, `index`, `replicas`, `skew`       |
+| `trace` | `pair agreed`                 | `i`, `n`                                      |
+| `trace` | `no pair implied`             | `pi`, `pn` — what the interval before implied |
+| `trace` | `next registration scheduled` | `delay`, `expires`                            |
+| `trace` | `pair handed to the loop`     | `i`, `n`                                      |
 
 ## Development
 
