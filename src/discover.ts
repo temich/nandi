@@ -132,8 +132,8 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
     // Owning nothing is not a failure in itself — a rebalance and an orderly
     // shutdown both pass through it — so losing a lease is reported at the
     // level the granting of one was, and whatever cost it says so above.
-    if (peer.i === null) log.info('lease released', { i: applied.i, n: applied.n })
-    else log.info('lease granted', { i: peer.i, n: peer.n })
+    if (peer.i === null) log.trace('lease released', { i: applied.i, n: applied.n })
+    else log.trace('lease granted', { i: peer.i, n: peer.n })
 
     applied = peer
     mailbox = peer
@@ -286,7 +286,7 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
     // signal reaches this: `break` leaves through the consumer, and a generator
     // cannot yield once that has happened.
     if (applied.i !== null) {
-      log.info('lease released', { i: applied.i, n: applied.n })
+      log.trace('lease released', { i: applied.i, n: applied.n })
 
       applied = IDLE
 
