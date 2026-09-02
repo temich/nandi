@@ -235,12 +235,12 @@ rest.
 | `error` | `registration failed`         | `error`, `attempt`, `delay`                   |
 | `warn`  | `lease expired`               | `interval`, `after`                           |
 | `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry`       |
-| `info`  | `lease granted`               | `i`, `n`                                      |
-| `info`  | `lease released`              | `i`, `n` — the pair given back                |
 | `info`  | `discover stopped`            | `reason`: `abort` or `closed`                 |
 | `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                          |
 | `debug` | `script loaded`               | `sha`                                         |
 | `trace` | `registration completed`      | `interval`, `index`, `replicas`, `skew`       |
+| `trace` | `lease granted`               | `i`, `n`                                      |
+| `trace` | `lease released`              | `i`, `n` — the pair given back                |
 | `trace` | `pair agreed`                 | `i`, `n`                                      |
 | `trace` | `no pair implied`             | `pi`, `pn` — what the interval before implied |
 | `trace` | `next registration scheduled` | `delay`, `expires`                            |
