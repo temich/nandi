@@ -117,6 +117,8 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
   let held: Held | null = null
   let previous: Peer = IDLE
   let applied: Peer = IDLE
+  let agreed = false
+  let split = false
   let mailbox: Peer | null = null
   let deliver: (() => void) | null = null
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -226,11 +228,26 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
         // changed is not yet held by the whole group, and taking it up while a
         // worker that has not registered this interval is still on the old one
         // is what would put two mappings live at once.
+        //
+        // The first implied pair always differs from idle, and every later
+        // agreement of a settled group is the steady state. Only a split after
+        // the pair had been held, and the agreement that closes it, are worth
+        // a line.
         if (same(next, previous)) {
-          log.trace('pair agreed', { i: next.i, n: next.n })
+          if (split && next.i !== null) {
+            log.info('pair agreed', { i: next.i, n: next.n })
+            split = false
+          }
+
+          if (next.i !== null) agreed = true
+
           publish(next)
         } else {
-          log.debug('pair disagreed', { i: next.i, n: next.n, pi: previous.i, pn: previous.n })
+          if (agreed) {
+            log.info('pair disagreed', { i: next.i, n: next.n, pi: previous.i, pn: previous.n })
+            split = true
+          }
+
           publish(IDLE)
         }
 

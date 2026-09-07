@@ -230,21 +230,21 @@ Messages are constants and every value travels in the attributes, the group
 `name` included, so lines group by message whatever the backend does with the
 rest.
 
-| level   | message                       | attributes                                    |
-| ------- | ----------------------------- | --------------------------------------------- |
-| `error` | `registration failed`         | `error`, `attempt`, `delay`                   |
-| `warn`  | `lease expired`               | `interval`, `after`                           |
-| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry`       |
-| `info`  | `discover stopped`            | `reason`: `abort` or `closed`                 |
-| `debug` | `pair disagreed`              | `i`, `n`, `pi`, `pn`                          |
-| `debug` | `script loaded`               | `sha`                                         |
-| `trace` | `registration completed`      | `interval`, `index`, `replicas`, `skew`       |
-| `trace` | `lease granted`               | `i`, `n`                                      |
-| `trace` | `lease released`              | `i`, `n` — the pair given back                |
-| `trace` | `pair agreed`                 | `i`, `n`                                      |
-| `trace` | `no pair implied`             | `pi`, `pn` — what the interval before implied |
-| `trace` | `next registration scheduled` | `delay`, `expires`                            |
-| `trace` | `pair handed to the loop`     | `i`, `n`                                      |
+| level   | message                       | attributes                                     |
+| ------- | ----------------------------- | ---------------------------------------------- |
+| `error` | `registration failed`         | `error`, `attempt`, `delay`                    |
+| `warn`  | `lease expired`               | `interval`, `after`                            |
+| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry`        |
+| `info`  | `discover stopped`            | `reason`: `abort` or `closed`                  |
+| `info`  | `pair disagreed`              | `i`, `n`, `pi`, `pn` — after a held pair split |
+| `info`  | `pair agreed`                 | `i`, `n` — the agreement that closes a split   |
+| `debug` | `script loaded`               | `sha`                                          |
+| `trace` | `registration completed`      | `interval`, `index`, `replicas`, `skew`        |
+| `trace` | `lease granted`               | `i`, `n`                                       |
+| `trace` | `lease released`              | `i`, `n` — the pair given back                 |
+| `trace` | `no pair implied`             | `pi`, `pn` — what the interval before implied  |
+| `trace` | `next registration scheduled` | `delay`, `expires`                             |
+| `trace` | `pair handed to the loop`     | `i`, `n`                                       |
 
 ## Development
 

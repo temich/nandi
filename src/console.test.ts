@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict'
 import { after, describe, it } from 'node:test'
 import type { Console } from './console.ts'
-import { connect, faulty, INTERVAL, group, settle, start, type Fault } from './harness.ts'
+import {
+  assertPartitions,
+  connect,
+  faulty,
+  INTERVAL,
+  group,
+  settle,
+  start,
+  type Fault,
+} from './harness.ts'
 import { discover, type Peer } from './discover.ts'
 import { redisRegistry } from './registry.ts'
 
@@ -95,15 +104,9 @@ describe('console', () => {
     assert.ok(log.at('registration completed').length >= 3, 'must report every registration')
     assert.deepEqual(log.at('lease granted')[0]?.attributes, { name, i: 0, n: 1 })
 
-    // The pair is only handed over once the interval before it agreed, so the
-    // disagreement that precedes it is on the record too.
-    assert.equal(log.at('pair disagreed').length, 1)
-    assert.equal(
-      log.at('pair disagreed')[0]?.level,
-      'debug',
-      'the one interval that held the pair back must not sit at the level its agreeing counterpart repeats at'
-    )
-    assert.ok(log.at('pair agreed').some(line => line.attributes.i === 0))
+    // The first implied pair always differs from idle; that is not a split.
+    assert.equal(log.at('pair disagreed').length, 0)
+    assert.equal(log.at('pair agreed').length, 0)
 
     assert.equal(
       log.at('pair handed to the loop').length,
@@ -112,6 +115,38 @@ describe('console', () => {
     )
 
     for (const line of log.lines) assert.equal(line.attributes.name, name, line.message)
+  })
+
+  it('reports a pair that splits after it had agreed', async () => {
+    const name = group()
+    const log = recorder()
+    const first = start({ name, interval: INTERVAL, console: log.console })
+
+    await settle(() => assert.deepEqual(first.peer(), { i: 0, n: 1 }), INTERVAL * 8)
+
+    assert.equal(log.at('pair disagreed').length, 0, 'taking up the first pair is not a split')
+    assert.equal(log.at('pair agreed').length, 0, 'the opening agreement has nothing to close')
+
+    const second = start({ name, interval: INTERVAL })
+
+    await settle(() => assertPartitions([first, second], 2), INTERVAL * 10)
+    await first.stop()
+    await second.stop()
+
+    const disagreed = log.at('pair disagreed')
+    const agreed = log.at('pair agreed')
+
+    assert.ok(disagreed.length >= 1, 'resizing the group must split a held pair')
+    assert.ok(disagreed.every(line => line.level === 'info'))
+    assert.ok(agreed.length >= 1, 'the agreement that closes the split must be on the record')
+    assert.ok(agreed.every(line => line.level === 'info'))
+
+    const split = log.lines.findIndex(line => line.message === 'pair disagreed')
+    const closed = log.lines.findIndex(
+      (line, index) => index > split && line.message === 'pair agreed'
+    )
+
+    assert.ok(closed > split, 'pair agreed is only written after a split')
   })
 
   it('says nothing above info while nothing is wrong', async () => {
