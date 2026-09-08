@@ -163,11 +163,19 @@ describe('console', () => {
       'a healthy group must not rise above info'
     )
 
-    // Start and end: that is the whole of a healthy run at info level.
+    // A healthy run never rises to info: start and end sit with the rest of
+    // the lease chatter, below the level a deployment reads.
     assert.deepEqual(
       log.lines.filter(line => line.level === 'info').map(line => line.message),
-      ['discover started', 'discover stopped']
+      []
     )
+
+    for (const message of ['discover started', 'discover stopped'])
+      assert.deepEqual(
+        log.at(message).map(line => line.level),
+        ['trace'],
+        message
+      )
 
     // Every worker of a group writes these each time the group is resized, so
     // they sit below the level a deployment reads.
