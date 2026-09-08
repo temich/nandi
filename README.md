@@ -65,6 +65,14 @@ and leave less room between workers. Long intervals are calmer but slower to
 reflect reality. Nothing below a second is sensible in production, though the
 library enforces no floor — its own tests run at 300ms.
 
+Changing it on a live group is not a rebalance. `N` is derived from the interval
+inside the script, so workers running different intervals register in different
+keys and never see one another: a rolling deploy that changes it leaves two
+groups partitioning the same tasks, each into its own `0..n-1`, and every task
+is taken twice. `name` and `prefix` divide a group the same way. Take the group
+down and bring it back on the new value — there is no way to change one while it
+serves.
+
 ### Shutting down
 
 Aborting the signal yields the idle pair one last time before the loop finishes,
@@ -196,6 +204,14 @@ same index to two workers at once. What happens to work already in flight is
 yours: a consumer that keeps going after it has been handed a new pair, instead
 of draining first, can still finish a task another worker has since started.
 
+**Exclusivity rests on Redis keeping its writes.** Distinct indices inside an
+interval are what make the lease exclusive, and replication is asynchronous, so
+a failover to a replica that is behind can hand the same index out twice — and
+two intervals agreeing on it would not notice. A failover usually breaks the
+connections and expires the leases on the way through, but that is a
+consequence, not a guarantee. Ownership that has to survive a lost write wants a
+coordinator with a quorum behind it.
+
 **A worker that registers and then dies leaves its slot unowned** until the next
 interval, because the count is a snapshot of who _was_ present. No membership
 scheme avoids this; only a shorter interval narrows it.
@@ -209,11 +225,15 @@ exactly as a restart would. Silent is not the same as invisible: both show up on
 the `console` if you pass one, the first as `registration failed` and the second
 as `lease expired`.
 
-## Redis Cluster
+## Redis
 
-Keys are written as `{name}:N`. The braces are a hash tag, so every interval key
-of a group lands in one slot and the two keys the script touches are never
-cross-slot.
+Redis 5 or newer. The script reads `TIME` before it writes, which a server that
+replicates scripts verbatim refuses; Redis 5 replicates their effects instead,
+and anything from there on runs it.
+
+Under Redis Cluster, keys are written as `{name}:N`. The braces are a hash tag,
+so every interval key of a group lands in one slot and the two keys the script
+touches are never cross-slot.
 
 ## Diagnostics
 
