@@ -234,11 +234,11 @@ rest.
 | ------- | ----------------------------- | ---------------------------------------------- |
 | `error` | `registration failed`         | `error`, `attempt`, `delay`                    |
 | `warn`  | `lease expired`               | `interval`, `after`                            |
-| `info`  | `discover started`            | `interval`, `gap`, `prefix`, `registry`        |
-| `info`  | `discover stopped`            | `reason`: `abort` or `closed`                  |
 | `info`  | `pair disagreed`              | `i`, `n`, `pi`, `pn` — after a held pair split |
 | `info`  | `pair agreed`                 | `i`, `n` — the agreement that closes a split   |
 | `debug` | `script loaded`               | `sha`                                          |
+| `trace` | `discover started`            | `interval`, `gap`, `prefix`, `registry`        |
+| `trace` | `discover stopped`            | `reason`: `abort` or `closed`                  |
 | `trace` | `registration completed`      | `interval`, `index`, `replicas`, `skew`        |
 | `trace` | `lease granted`               | `i`, `n`                                       |
 | `trace` | `lease released`              | `i`, `n` — the pair given back                 |

@@ -107,7 +107,7 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
 
   if (signal?.aborted) return
 
-  log.info('discover started', {
+  log.trace('discover started', {
     interval,
     gap,
     prefix: options.prefix ?? '',
@@ -318,6 +318,6 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
 
     // Last of all, so an aborted loop reports the stand-down it still owed the
     // body before it reports being over.
-    log.info('discover stopped', { reason })
+    log.trace('discover stopped', { reason })
   }
 }
