@@ -24,10 +24,11 @@ releases a minor while the package is pre-1.0.
 
 ## Dependency bumps
 
-Dependabot opens its bumps against `dev` weekly, and they merge themselves: the
-`dependabot` workflow approves each one and arms auto-merge, so a bump lands the
-moment `check` goes green — and never lands without it. Major versions are in
-too; nothing is held back for a second pair of eyes.
+Dependabot opens its bumps against `dev` weekly. Minor and patch bumps merge
+themselves: the `dependabot` workflow approves each one and arms auto-merge, so
+a bump lands the moment `check` goes green — and never lands without it. A
+major bump waits for a review and a merge by hand, as does any bump whose
+commit message does not name its update type.
 
 The approval comes from the Actions token, so _Allow GitHub Actions to create
 and approve pull requests_ has to stay on in the repository settings. To keep a
