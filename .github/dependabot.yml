@@ -8,7 +8,7 @@ updates:
     labels:
       - 'Bump'
   - package-ecosystem: 'npm'
-    directory: '/'
+    directories: ['/', '/native']
     schedule:
       interval: 'weekly'
     target-branch: 'dev'

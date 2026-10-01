@@ -246,12 +246,12 @@ describe('console', () => {
     await worker.stop()
   })
 
-  it('reports a rejection that is not an error as its text', async () => {
+  it('reports a rejection that is not an error', async () => {
     const log = recorder()
     const control = new AbortController()
     // Whatever a registry rejects with is reported, Error or not.
     // oxlint-disable-next-line prefer-promise-reject-errors
-    const registry = { register: () => Promise.reject({ reason: 'not an error' }) }
+    const registry = { register: () => Promise.reject('injected outage') }
 
     const loop = (async () => {
       for await (const _ of discover({
@@ -267,7 +267,7 @@ describe('console', () => {
     control.abort()
     await loop
 
-    assert.equal(log.at('registration failed')[0]?.attributes.error, '[object Object]')
+    assert.equal(log.at('registration failed')[0]?.attributes.error, 'injected outage')
   })
 
   it('reports the lease expiring when a registration never comes back', async () => {

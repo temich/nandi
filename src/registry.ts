@@ -110,7 +110,8 @@ export const redisRegistry = (redis: RedisLike, options: RedisRegistryOptions): 
       if (!Array.isArray(reply) || (reply as unknown[]).length !== 4)
         throw new TypeError(`n-and-i: unexpected registration reply ${JSON.stringify(reply)}`)
 
-      const [interval, raw, previous, at] = (reply as unknown[]).map(Number)
+      // `map(Number)` compiles under scriptc 0.2.0 but throws on an `unknown[]`.
+      const [interval, raw, previous, at] = (reply as unknown[]).map(value => Number(value))
 
       return {
         interval: interval!,
