@@ -157,8 +157,8 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
 
     reason = why
     done = true
-    clearTimeout(timer)
-    clearTimeout(stale)
+    if (timer !== undefined) clearTimeout(timer)
+    if (stale !== undefined) clearTimeout(stale)
     interrupt?.()
     interrupt = null
     deliver?.()
@@ -189,7 +189,7 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
    * `2 * gap` the band leaves for it.
    */
   const arm = (ms: number) => {
-    clearTimeout(stale)
+    if (stale !== undefined) clearTimeout(stale)
 
     stale = setTimeout(() => {
       log.warn('lease expired', { interval: held?.interval ?? null, after: ms })
@@ -264,7 +264,11 @@ export async function* discover(options: DiscoverOptions): AsyncGenerator<Peer> 
         attempt += 1
         delay = backoff(interval, attempt)
 
-        log.error('registration failed', { error, attempt, delay })
+        log.error('registration failed', {
+          error: error instanceof Error ? error : String(error),
+          attempt,
+          delay,
+        })
       }
 
       if (done) break
