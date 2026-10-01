@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "oxlint.config.ts", "oxfmt.config.ts"]
+  "include": ["src/**/*.ts", "native/*.ts", "oxlint.config.ts", "oxfmt.config.ts"]
 }

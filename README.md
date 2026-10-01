@@ -290,6 +290,15 @@ A slower machine wants a larger one — CI uses `600`.
 | `npm test`          | `node --test` over `src/**/*.test.ts`  |
 | `npm run build`     | `tsc -p tsconfig.build.json` → `dist/` |
 
+`native/` builds a worker with [scriptc](https://github.com/vercel-labs/scriptc)
+and checks that a group of native binaries partitions through Redis. It has
+its own install, and needs `clang` on Linux:
+
+```sh
+npm install --prefix native
+npm test --prefix native
+```
+
 `husky` runs `npm run check` on pre-commit and lints the message against
 [conventional commits](https://www.conventionalcommits.org) on commit-msg.
 

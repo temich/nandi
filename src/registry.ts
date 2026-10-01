@@ -23,10 +23,13 @@ export interface Registry {
   register(): Promise<Tick>
 }
 
-/** How ioredis takes a script: the key count, then keys, then arguments. */
+/**
+ * How ioredis takes a script: the key count, then keys, then arguments — one
+ * key and two arguments here, spelled out rather than spread.
+ */
 interface Ioredis {
-  eval(script: string, keys: number, ...args: string[]): Promise<unknown>
-  evalsha(sha: string, keys: number, ...args: string[]): Promise<unknown>
+  eval(script: string, keys: number, key: string, length: string, keep: string): Promise<unknown>
+  evalsha(sha: string, keys: number, key: string, length: string, keep: string): Promise<unknown>
 }
 
 /** How node-redis takes a script: keys and arguments as named lists. */
@@ -72,16 +75,18 @@ const isMissingScript = (error: unknown) =>
 
 export const redisRegistry = (redis: RedisLike, options: RedisRegistryOptions): Registry => {
   const key = base(options)
-  const argv = [String(options.interval), String(options.interval * KEEP)]
+  const length = String(options.interval)
+  const keep = String(options.interval * KEEP)
+  const argv = [length, keep]
   const log = sink(options.console, { name: options.name })
 
   const byHash = isNodeRedis(redis)
     ? () => redis.evalSha(SHA, { keys: [key], arguments: argv })
-    : () => redis.evalsha(SHA, 1, key, ...argv)
+    : () => redis.evalsha(SHA, 1, key, length, keep)
 
   const bySource = isNodeRedis(redis)
     ? () => redis.eval(REGISTER, { keys: [key], arguments: argv })
-    : () => redis.eval(REGISTER, 1, key, ...argv)
+    : () => redis.eval(REGISTER, 1, key, length, keep)
 
   /** Send the hash, and only ship the source when the server has not seen it. */
   const call = async () => {
@@ -102,10 +107,11 @@ export const redisRegistry = (redis: RedisLike, options: RedisRegistryOptions): 
     async register() {
       const reply = await call()
 
-      if (!Array.isArray(reply) || reply.length !== 4)
+      if (!Array.isArray(reply) || (reply as unknown[]).length !== 4)
         throw new TypeError(`n-and-i: unexpected registration reply ${JSON.stringify(reply)}`)
 
-      const [interval, raw, previous, at] = reply.map(Number)
+      // `map(Number)` compiles under scriptc 0.2.0 but throws on an `unknown[]`.
+      const [interval, raw, previous, at] = (reply as unknown[]).map(value => Number(value))
 
       return {
         interval: interval!,

@@ -1,0 +1,11 @@
+{
+  "name": "n-and-i-native",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "scriptc": "0.2.0"
+  }
+}
