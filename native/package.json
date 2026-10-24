@@ -6,6 +6,6 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "scriptc": "0.2.0"
+    "scriptc": "0.4.0"
   }
 }
