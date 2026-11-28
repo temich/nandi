@@ -57,7 +57,7 @@
     "oxfmt": "^0.79.0",
     "oxlint": "^1.80.0",
     "redis": "^6.2.1",
-    "semantic-release": "^25.0.9",
+    "semantic-release": "^26.0.1",
     "typescript": "^7.0.2"
   },
   "engines": {
